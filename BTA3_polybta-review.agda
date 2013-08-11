@@ -375,7 +375,7 @@ data AEnv : Ctx → ACtx → Set where
 lem-AEnv-weakening : ∀ {Γ Γ' Δ} → AEnv Γ Δ → Γ cx-≤ Γ' → AEnv Γ' Δ
 lem-AEnv-weakening env[] prf = env[]
 lem-AEnv-weakening (envS:: {α = α} x env) prf = envS:: (lem-impTA-weakening {α} x prf) (lem-AEnv-weakening env prf)
-lem-AEnv-weakening (envD:: {Γ} σ x env) prf = lem-AEnv-weakening (envD:: σ x env) prf  -- non-primitive recursion... this should be fixable by extending Γ in the middle, rather than in the end
+lem-AEnv-weakening (envD:: {Γ} σ x env) prf = envS:: (lem-impTA-weakening {Ann D σ} x prf) (lem-AEnv-weakening env (lem-cx-≤-trans (cxle-lt (strip' σ) (cxle-eq Γ)) prf))  -- non-primitive recursion... this should be fixable by extending Γ in the middle, rather than in the end
 
 lookup : ∀ {Γ Δ α} → AEnv Γ Δ → (o : α ∈ Δ ) → impTA Γ α
 lookup env[] ()
