@@ -86,6 +86,51 @@ isTrue false = False
 
 -- END standard library
 
+----------------------
+-- Sublists
+----------------------
+data _cx-≤_ {A : Set} : List A → List A → Set where
+  cxle-eq : (l : List A) → l cx-≤ l
+  cxle-lt : ∀ {l₁ l₂} x → l₁ cx-≤ l₂ → l₁ cx-≤ (x ∷ l₂)
+
+
+lem-cx-≤-trans : {A : Set} → {l₁ : List A} {l₂ : List A} {l₃ : List A} →
+                 l₁ cx-≤ l₂ → l₂ cx-≤ l₃ → l₁ cx-≤ l₃
+lem-cx-≤-trans le1  (cxle-eq l) = le1
+lem-cx-≤-trans (cxle-eq l) (cxle-lt x e) = cxle-lt x e
+lem-cx-≤-trans (cxle-lt x e) (cxle-lt x' e') = cxle-lt x' (lem-cx-≤-trans (cxle-lt x e) e')
+ 
+
+
+_cxle-∷_ : {A : Set} (x : A) (l : List A) → l cx-≤ (x ∷ l)
+x cxle-∷ l = cxle-lt x (cxle-eq l)
+
+
+data _⊆_ {A : Set} : List A → List A → Set where
+  refl-⊆ : ∀ {l} → l ⊆ l
+  step-⊆ : ∀ {l} x l₁ l₂ → l ⊆ (l₁ ++ l₂) → l ⊆ (l₁ ++ (x ∷ l₂))
+
+lem-⊆-trans : {A : Set} → {l₁ : List A} {l₂ : List A} {l₃ : List A} →
+                 l₁ ⊆ l₂ → l₂ ⊆ l₃ → l₁ ⊆ l₃
+lem-⊆-trans e (refl-⊆ {l}) = e
+lem-⊆-trans (refl-⊆ {l}) (step-⊆ x l₁ l₂ e) = step-⊆ x l₁ l₂ e
+lem-⊆-trans (step-⊆ x l₁ l₂ e) (step-⊆ x' l₁' l₂' e') = step-⊆ x' l₁' l₂' (lem-⊆-trans (step-⊆ x l₁ l₂ e) e') 
+
+-- data _≤1_ {A : Set} : List A → List A → Set where
+--   cxle1-eq : (l : List A) → l ≤1 l
+--   cxle1-lt : ∀ x (l : List A) → l ≤1 (x ∷ l)
+
+ 
+-- data _?∷_ {A : Set} (x : A): List A → Set where
+--   yes∷ : (l : List A) → x ?∷ (x ∷ l)
+--   no∷ : (l : List A) → x ?∷ l
+
+-- getList : ∀ {A} {x : A} {l : List A} → x ?∷ l → List A
+-- getList {x = x} (yes∷ l) = x ∷ l
+-- getList {_} {_} {l} (no∷ .l) = l
+
+-- end sublists
+
 -- some lemmas about BT subsumption
 lem-bt≼S : {bt : BT} → isTrue (bt ≼ S) → bt == S
 lem-bt≼S {S} bt≼S = refl
@@ -100,19 +145,6 @@ lem-D≼bt : {bt : BT} → isTrue (D ≼ bt) → bt == D
 lem-D≼bt {S} ()
 lem-D≼bt {D} D≼bt = refl
 
--- which can also be defined as follows,
--- my_lem-D≼S : {bt : BT} → isTrue (D ≼ bt) → bt == D
--- my_lem-D≼S {S} ()
--- my_lem-D≼S {D} _ = refl
-
--- note that the above two functions help us to determine whether
--- the element of concern is dynamic [D] or static [S]
--- if it is the case then it returns an evidence of the equality
-
--- also note that the above cases examplify the benefit of defining [True] as
--- record type,
--- since the type checker will fill in the sole element of the type for us 
--- we can write intuitive notations in such places to improve readability
 
 -- Types of the calculus
 mutual
@@ -125,23 +157,6 @@ mutual
     SInt  : SType
     SFun  : AType → AType → SType
 
--- the above definition of types consists of,
--- a. the ground types,[SType],which consists of 
---    integer [SInt] which is not annotated
---    and
---    function [SFun] whose arguments are annotated(of type [AType])
--- b. the annotated types,[AType], which is constructed from an element
---    of [BT] standing for the annotation and an element of [SType]
-
--- some example types and their corresponding representation according
--- to the above definition,
--- int^{S} int^{D} int^{S}→int^{D} (int^{S}→int^{D})^{S}
--- Ann S SInt
--- Ann D SInt
--- SFun (Ann S SInt) (Ann D SInt)
--- Ann S (
---         SFun (Ann S SInt) (Ann D SInt)
---       )
 
 -- aux definitions
 ATInt : BT → AType
@@ -251,74 +266,46 @@ data Exp (Γ : Ctx) : Type → Set where
   EFun : ∀ {τ₁ τ₂} → Exp (τ₂ ∷ Γ) τ₁ → Exp Γ (TFun τ₂ τ₁)
   EApp : ∀ {τ₁ τ₂} → Exp Γ (TFun τ₂ τ₁) → Exp Γ τ₂ → Exp Γ τ₁
 -- one additional term,
+count_tl : ∀ {A  Γ Γ'} {τ : A } → τ ∈ Γ → Γ cx-≤ Γ' → τ ∈ Γ'
+count_tl  x (cxle-eq Γ) = x
+count_tl x  (cxle-lt T e) = tl (count_tl x e)
 
--- EDummy : ∀ {τ} → Exp Γ τ
 
--- note given a context of low-level types, we are ready to specify 
--- well-typed low-level expressions,
--- a. [EVar y : Exp gamma τ] if variable y has type τ given gamma
---    note that since y is actually an evidence for [τ ∈ gamma],
---    it actually has the form [tl tl ... tl hd] where the number
---    of tl's and hd corresponds to the index of the element on the list
---    which is the type of the variable
---    in fact we can actually construct a function which would give us
---    the type of a variable given a context
--- b. [EInt ℕ : Exp gamma TInt]
--- c. [EFun e : Exp gamma (TFun τ₂ τ₁)] where e is an expression of type,
---    [e : Exp (τ₂::gamma) τ₁]
---    note that e here as the function body should have type τ₁ given 
---    the input of type τ₂
--- d. [EApp e₁ e₂ : Exp gamma τ₂] where e₁ and e₂ have the following types,
---    [e₁ : Exp gamma (TFun τ₁ τ₂)] and [e₂ : Exp gamma τ₁]
+
+data _cx=≤_ {A : Set} : List A → List A → Set where
+  cxle-peq : ∀ {l₁ l₂} { x } → l₁ cx-≤ l₂ → (x ∷ l₁) cx=≤ (x ∷ l₂)
+  cxle-plt : ∀ {l₁ l₂} { x } → l₁ cx=≤ l₂ → (x ∷ l₁) cx=≤ (x ∷ l₂)
+
+count_tl' : ∀ {A  Γ Γ'} {τ : A } → τ ∈ Γ → Γ cx=≤ Γ' → τ ∈ Γ'
+count_tl' hd (cxle-plt e) = hd
+count_tl' hd (cxle-peq e) = hd
+count_tl' (tl xid) (cxle-plt e) = tl (count_tl' xid  e)
+count_tl' (tl xid) (cxle-peq e) = tl (count_tl xid e)
+
+
+
+lem-Exp-weakening' : ∀ {τ₂ τ₁ Γ Γ'} → Exp (τ₂ ∷ Γ) τ₁ → (τ₂ ∷ Γ) cx=≤ (τ₂ ∷ Γ') → Exp (τ₂ ∷ Γ') τ₁
+lem-Exp-weakening' (EVar x) e = EVar (count_tl' x  e)
+lem-Exp-weakening'  (EInt n) e = EInt n
+lem-Exp-weakening'  (EFun t) e = EFun (lem-Exp-weakening' t (cxle-plt e))
+lem-Exp-weakening'  (EApp t1 t2) e = EApp (lem-Exp-weakening' t1 e) (lem-Exp-weakening' t2 e)   
+
+lem-Exp-weakening : ∀ {τ Γ Γ'} → Exp Γ τ → Γ cx-≤ Γ' → Exp Γ' τ
+lem-Exp-weakening t (cxle-eq Γ) = t
+lem-Exp-weakening (EInt n) e = EInt n
+lem-Exp-weakening (EVar x) e  = EVar (count_tl x e)
+lem-Exp-weakening (EFun t) (cxle-lt T e) = EFun (lem-Exp-weakening' t (cxle-peq (cxle-lt T e))) 
+lem-Exp-weakening (EApp t1 t2) e = EApp (lem-Exp-weakening t1 e) (lem-Exp-weakening t2 e)
+
 
 -- typed annotated expressions
-
 ACtx = List AType
 
-data AExp' (△ △' : ACtx) : AType → Set where
-  AVar'  : ∀ {α}   → α ∈ △  → AExp' △ △' α
-  ABvar' : ∀ {α}   → α ∈ △' → AExp' △ △' α
-  AInt'  : (bt : BT) →    ℕ      → AExp' △ △' (ATInt bt)
-  AFun'  : ∀ {α₁ α₂} (bt : BT) → wft (ATFun bt α₂ α₁) → AExp' △ (α₂ ∷ △') α₁ → AExp' △ △' (ATFun bt α₂ α₁)
-  AApp'  : ∀ {α₁ α₂} (bt : BT) → wft (ATFun bt α₂ α₁) → AExp' △ △' (ATFun bt α₂ α₁) → AExp' △ △' α₂ → AExp' △ △' α₁ 
-
--- note that [AExp'] carries two typing contexts,
--- one is our good-old typing context for free variables and
--- the other is that for bounded variables
-
-
 data AExp (Δ : ACtx) : AType → Set where
- -- free variables,
   AVar : ∀ {α} → α ∈ Δ → AExp Δ α
- -- note that it seems to be necessary to distinguish between
- -- Bounded variables,
- -- ABvar : ∀ {α₁ α₂} → α₁ ∈ (α₂ ∷ Δ) → AExp Δ α₁
- -- bounded variables and unbounded variables 
- -- to be visited later...
   AInt : (bt : BT) → ℕ → AExp Δ (ATInt bt)
   AFun : ∀ {α₁ α₂} (bt : BT) → wft (ATFun bt α₂ α₁) → AExp (α₂ ∷ Δ) α₁ → AExp Δ (ATFun bt α₂ α₁)
   AApp : ∀ {α₁ α₂} (bt : BT) → wft (ATFun bt α₂ α₁) → AExp Δ (ATFun bt α₂ α₁) → AExp Δ α₂ → AExp Δ α₁
-
-  -- since a well-typed function implies that the function is well-formed so
-  -- [AApp] can be rewritten as follows,
-  -- : ∀ {α₁ α₂}(bt : BT) → AExp △ (ATFun bt α₂ α₁) → AExp △ α₂
-  --     → AExp △ α₁
-
--- now in case of annotated types, we also have to make sure that all the
--- annotations of a type are consistent with each other. For instance, in
--- case of function types we have to make sure that the arguments are at least
--- as dynamic as the function itself
--- again we have,
--- a. [AVar y : AExp gamma τ] where τ is the type of y according to gamma
--- b. [AInt bt n : AExp gamma (Ann bt SInt)]
--- c. [AFun bt e₁ e₂ : AExp gamma (Ann bt (SFun τ₁ τ₂))] where
---    e₁ is the evidence that the annotations of the function type are 
---    consistent and e₂ has the following type,
---    [e₂ : AExp (τ₁::gamma) τ₂]
--- d. [AApp bt e₁ e₂ e₃ : AExp gamma τ₃] with
---    e₁ as the evidence of well-formed function type and
---    [e₂ : AExp gamma (Ann bt (SFun τ₂ τ₃))] and [e₃ : AExp gamma τ₂]
-
 
 
 -- stripping of contexts
@@ -327,269 +314,96 @@ residual [] = []
 residual (Ann S _ ∷ xs) = residual xs
 residual (Ann D σ ∷ xs) = strip' σ ∷ residual xs
 
--- another way of converting one environment to another,
--- residual' : ACtx → Ctx
--- residual' [] = []
--- residual' (Ann _ α ∷ xs ) = strip' α ∷ residual' xs
-
--- note the above function converts a list of annotated types to a list of
--- low-level types in the following way,
--- it skips all static types on the list and strip off the annotations of
--- dynamic types to obtain the corresponding low-level types
--- consider the following list of annotated types,
--- (Ann S SInt)::(Ann D SInt)::(Ann D (SFun (Ann D SInt) (Ann D SInt)))
--- use [residual] we can convert it to a list of low-level types,
--- TInt::(TFun TInt TInt)
+-- ``semantic domain'' for partially evaluated AExp-terms:
+--   - AExp-terms of dynamic type evaluate to Exp-terms
+--   - AExp-terms of static type evaluate to agda terms, where SFun
+--     are functions and SInt are natural numbers
 mutual 
-  ImpTA : Ctx → ACtx → AType → Set
-  ImpTA Γ Δ (Ann S σ) = ImpTA' Γ Δ σ
-  ImpTA Γ Δ (Ann D σ) = Exp Γ (strip' σ)
+  impTA : Ctx → AType → Set
+  impTA Γ (Ann S σ) = impTA' Γ σ
+  impTA Γ (Ann D σ) = Exp Γ (strip' σ)
   
-  ImpTA' : Ctx → ACtx → SType → Set
-  ImpTA' Γ Δ SInt = ℕ
-  ImpTA' Γ Δ (SFun y y') = ImpTA Γ Δ y → ImpTA Γ Δ y'
+  impTA' : Ctx → SType → Set
+  impTA' Γ SInt = ℕ
+  -- impTA' Γ (SFun y y') = impTA Γ y → impTA Γ y'
+  impTA' Γ (SFun y y') = ∀ {Γ'} → Γ cx-≤ Γ' → impTA Γ' y → impTA Γ' y'
 
--- note modify the above [ImpTA] as follows,
-mutual
-  impta  : Ctx → ACtx → AType → Set
-  impta Γ Δ (Ann S σ)   = impta' [] Δ σ
-  impta Γ Δ (Ann D σ) = Exp Γ (strip' σ)
+lem-impTA-weakening : ∀ {α Γ Γ'} →
+                      impTA Γ α →
+                      Γ cx-≤ Γ' →
+                      impTA Γ' α
+lem-impTA-weakening {Ann S SInt} v _ = v
+lem-impTA-weakening {Ann S (SFun x x₁)} f prf = λ prf' → f (lem-cx-≤-trans prf prf')
+lem-impTA-weakening {Ann D x₁} v prf = lem-Exp-weakening v prf 
 
-  impta' : Ctx → ACtx → SType → Set
-  impta' Γ Δ SInt = ℕ
-  impta' Γ Δ (SFun y y') = impta Γ Δ y → impta Γ Δ y'
+-- mutual 
+--   impTA-try : Ctx → AType → Set
+--   impTA-try Γ (Ann S σ) = impTA-try' Γ σ
+--   impTA-try Γ (Ann D σ) = Exp Γ (strip' σ)
+  
+--   impTA-try' : Ctx → SType → Set
+--   impTA-try' Γ SInt = ℕ
+--   impTA-try' Γ (SFun y y') = impTA-try Γ y → impTA-try Γ y'
 
--- mutual
---   ImpTA : ACtx → AType → Set
---   ImpTA Δ (Ann S σ) = ImpTA' Δ σ
---   ImpTA Δ (Ann D σ) = Exp (residual Δ) (strip' σ)
-  -- in [residual] using a different typing context,
-  -- say Γ.
-
---   ImpTA' : ACtx → SType → Set
---   ImpTA' Δ SInt = ℕ
---   ImpTA' Δ (SFun y y') = ImpTA Δ y → ImpTA Δ y'
-
-
--- first off let us consider the following examples,
--- a. ImpTA gamma (Ann D SInt)
---    = Exp (residual gamma) TInt
--- b. ImpTA gamma (Ann S SInt)
---    = ImpTA' gamma SInt
---    = ℕ
--- c. ImpTA gamma (Ann S
---                  SFun (Ann S SInt) (Ann D SInt)
---                )
---    = ImpTA' gamma (SFun (Ann S SInt)(Ann D SInt))
---    = ImpTA gamma (Ann S SInt) → ImpTA gamma (Ann D SInt)
---    = ImpTA' gamma SInt →  Exp (residual gamma) TInt
---    = ℕ  -> Exp (residual gamma) TInt
--- from the above instances, we conclude that [ImpTA],
--- with the typing context [ACtx], and
--- 1. a static annotated type returns either [ℕ] or a function type
---    [τ₁ → τ₂] where [τ₁] and [τ₂] are again determined by
---    the typing context and whether the annotationis static or dynamic
--- 2. a dynamic annotated type returns a type of low-level expressions,
---    [Exp (residual gamma) (strip'τ)]
-
--- the following block is subject to modification...
--- to be modified...
-
-
-
--- data AEnv : ACtx → Set where
---  env[] : AEnv []
---  env:: : ∀ {Δ} {α : AType} → ImpTA (α ∷ Δ) α → AEnv Δ → AEnv (α ∷ Δ)
-
+-- lem-impTA-try-weakening : ∀ {α Γ Γ'} →
+--                       impTA-try Γ α →
+--                       Γ cx-≤ Γ' →
+--                       impTA-try Γ' α
+-- lem-impTA-try-weakening {Ann S SInt} v _ = v
+-- lem-impTA-try-weakening {Ann S (SFun α x₁)} {Γ} {Γ'} f prf = {! λ (v : impTA-try Γ' α) → f v!}
+-- lem-impTA-try-weakening {Ann D x₁} v prf = lem-Exp-weakening v prf 
 
 data AEnv : Ctx → ACtx → Set where
-  env[] :  ∀{Γ} → AEnv Γ []
-  envS:: : ∀ {Γ Δ} {α : SType} → ImpTA Γ (Ann S α ∷ Δ) (Ann S α) → AEnv Γ Δ → AEnv Γ (Ann S α ∷ Δ)
-  envD:: : ∀ {Γ Δ} {α : SType} → ImpTA ((strip' α) ∷ Γ) (Ann D α ∷ Δ) (Ann D α) → AEnv ((strip' α) ∷ Γ) Δ → AEnv ((strip' α) ∷ Γ) (Ann D α ∷ Δ)
-
--- modify the above [AEnv] as follows,
-
-data aenv' : Ctx → ACtx → Set where
-  Env[]' : ∀{Γ} → aenv' Γ []
-  Env::' : ∀{Γ Δ} {α : SType} {bt : BT} → impta Γ (Ann bt α ∷ Δ ) (Ann bt α) → aenv' Γ Δ → aenv' Γ (Ann bt α ∷ Δ)
-
-data aenv  : Ctx → ACtx → Set where
-  Env[]  : ∀{Γ} → aenv Γ []
-  EnvD:: : ∀{Γ Δ} {α : SType} → impta ((strip' α) ∷ Γ) (Ann D α ∷ Δ) (Ann D α) → aenv' ((strip' α) ∷ Γ) Δ → aenv ((strip' α) ∷ Γ) (Ann D α ∷ Δ)
-  EnvS:: : ∀{Γ Δ} {α : SType} → impta Γ (Ann S α ∷ Δ) (Ann S α) → aenv Γ Δ → aenv Γ (Ann S α ∷ Δ)
-
--- note that the above definition is created to account for cases where
--- we need to rewrite some of the values in the form [EVar y] to the form
--- [EVar tl y]
-
--- now we write a function to do such rewriting depending upon the new value
--- being created is dynamic or static
+  env[] :  ∀ {Γ} → AEnv Γ []
+  envS:: : ∀ {Γ Δ} {α} →
+           impTA Γ α → 
+           AEnv Γ Δ →
+           AEnv Γ (α ∷ Δ)
+  envD:: : ∀ {Γ Δ} →
+           (σ : SType) →
+           impTA (strip' σ ∷ Γ) (Ann D σ) →
+           AEnv Γ Δ →
+           AEnv (strip' σ ∷ Γ) (Ann D σ ∷ Δ)
 
 
-Dextend' : ∀ {Γ Δ} {α : Type} → aenv' Γ Δ → aenv' (α ∷ Γ) Δ
-Dextend' Env[]' = Env[]'
-Dextend' (Env::' {bt = D} (EVar y) env) = Env::' {bt = D} (EVar (tl y)) (Dextend' env)
-Dextend' (Env::' x env) = Env::' x (Dextend' env)
- 
-Dextend : ∀ {Γ Δ} {α : Type} → aenv Γ Δ  → aenv' (α ∷ Γ) Δ 
-Dextend  Env[]               = Env[]'
-Dextend (EnvS:: x env)       = Env::' x (Dextend env)
-Dextend (EnvD:: (EVar y) Env[]') = Env::' (EVar (tl y)) Env[]'
-Dextend (Env::' (EVar y) Env[]') = Env::' (EVar (tl y)) Env[]'
-Dextend (EnvD:: (EVar y) env)    = Env::' (EVar (tl y)) (Dextend env)
-Dextend (envD:: y env) = envD:: y (Dextend env)  
+lem-AEnv-weakening : ∀ {Γ Γ' Δ} → AEnv Γ Δ → Γ cx-≤ Γ' → AEnv Γ' Δ
+lem-AEnv-weakening env[] prf = env[]
+lem-AEnv-weakening (envS:: {α = α} x env) prf = envS:: (lem-impTA-weakening {α} x prf) (lem-AEnv-weakening env prf)
+lem-AEnv-weakening (envD:: {Γ} σ x env) prf = envS:: (lem-impTA-weakening {Ann D σ} x prf) (lem-AEnv-weakening env (lem-cx-≤-trans (cxle-lt (strip' σ) (cxle-eq Γ)) prf))  -- non-primitive recursion... this should be fixable by extending Γ in the middle, rather than in the end
 
--- Aextend :  ∀ {Δ}{α : SType} → ImpTA (Ann D α ∷ Δ) (Ann D α) → AEnv Δ → AEnv (Ann D α ∷ Δ)
---Aextend x env = env:: x {!!}
+lookup : ∀ {Γ Δ α} → AEnv Γ Δ → (o : α ∈ Δ ) → impTA Γ α
+lookup env[] ()
+lookup (envS:: x env) hd = x
+lookup (envS:: x env) (tl idx) = lookup env idx
+lookup (envD:: σ x env) hd = x 
+lookup {α = α} (envD:: {Γ} σ x env) (tl idx) = lem-impTA-weakening {α} (lookup env idx) (strip' σ cxle-∷ Γ) 
 
--- considering that all terms in the value context are closed terms
--- we need to redefine [AEnv] as follows,
--- data AEnv' : ACtx → Set where
---  env[]' : AEnv' []
---  env::' : ∀ {△} {α : AType} → ImpTA [] α → AEnv' △ → AEnv' (α ∷ △)
+data IsDynamic : AType → Set where
+  is-dyn : ∀ σ → IsDynamic (Ann D σ)
 
-  -- in case of bounded variables, the typing context is extended without
-  -- extending the value context
-  -- env** : ∀ {Δ} {α : AType} → AEnv Δ → AEnv (α ∷ Δ)
+lem-IsDynamic-by-wf : ∀ α → isTrue (D ≼ btof α) → IsDynamic α
+lem-IsDynamic-by-wf (Ann S σ) ()
+lem-IsDynamic-by-wf (Ann D σ) _ = is-dyn σ 
 
--- note that a similar construction in Lu's file as follows,
--- data Env : ∀ {n} → Ctxt n → Set where
---   []   : Env []
---   _::_ : ∀ {n t} → (v : eval-ty t) → {Γ : ctxt n} → (env : Env Γ)
---          → Env (t :: Γ)
--- the difference between these two are that the latter when taking a value
--- as input, the calculation of the type of the value is independent from
--- the typing context, which is obvious for by definition value terms do
--- not have free variables
--- by contrast, the calculation of the type of the value in [AEnv] has to
--- include the typing context for depending upon the structure and annotation
--- of [α], the result could also be the type of the low-level term which 
--- can contain free variables
-
--- however, both approches observe the "one-to-one correspondance" between
--- the typing context and the value context 
+-- TODO: Do we need additional assurance in the type signature (or as
+-- an aux. lemma) that Γ is the residue of Δ?
+pe : ∀ {Δ Γ α} → AEnv Γ Δ → AExp Δ α → impTA Γ α
+pe env (AVar idx) = lookup env idx
+pe env (AInt S i) = i
+pe env (AInt D i) = EInt i
+pe {Γ = Γ} env (AFun {α₁} {α₂} S prf exp) = λ {Γ'} (prf₁ : Γ cx-≤ Γ') (v : impTA Γ' α₂) →
+                                                     pe (envS:: v (lem-AEnv-weakening env prf₁)) exp
+pe env (AFun {α₁} {α₂} D (wf-fun _ _ prf-2 prf-1) e)
+  with lem-IsDynamic-by-wf α₁ prf-1 | lem-IsDynamic-by-wf α₂ prf-2
+pe {Γ = Γ} env (AFun {.(Ann D σ₁)} {.(Ann D σ₂)} D (wf-fun _ _ prf-1 prf-2) e)
+  | is-dyn σ₁ | is-dyn σ₂ =
+  EFun (pe (envD:: σ₂ (EVar hd) env) e)
+pe {Γ = Γ} env (AApp S _ f e) = (pe env f (cxle-eq Γ)) (pe env e)
+pe env (AApp {α₁} {α₂} D (wf-fun _ _ prf-2 prf-1) f e)
+  with lem-IsDynamic-by-wf α₁ prf-1 | lem-IsDynamic-by-wf α₂ prf-2
+pe env (AApp {.(Ann D σ₁)}{.(Ann D σ₂)} D (wf-fun _ _ prf-2 prf-1) f e)
+ | is-dyn σ₁ | is-dyn σ₂ =
+ EApp (pe env f) (pe env e) -- construct an Exp-application using the proof that argument and results are dynamic and thus pe yields Exp-terms for them
 
 
 
-
--- note that [AEnv] not only specifies how the "value context" is being
--- constructed, it also establishes the correspondance between "typing context"
--- and the "value context"
-
---lookup₁ : ∀ { △ : ACtx }{α : AType}  → α ∈ △ → ACtx
---lookup₁ {[]} ()
---lookup₁ {x ∷ xs}  hd  = x ∷ xs 
---lookup₁ {x ∷ xs} (tl y) = lookup₁ {xs} y
-
---lookup : ∀ {Δ : ACtx}{α : AType} → AEnv Δ → (o : α ∈ Δ ) → ImpTA (lookup₁ o) α
---lookup  (env[]) ()
---lookup  (env:: y y') hd = y --{!!}
---lookup  (env:: y' y0) (tl y1) = lookup y0 y1 -- lookup y0 y1 --{!!}
-
--- a note to be added here...
-
--- extract : ∀ {△ : ACtx}{α : AType} → AExp △ α → ACtx
--- extract (AVar y) = lookup₁ y
--- extract {△} _        = △ 
-
--- 
--- data Case : Set where
--- c1 : ∀ {△ : ACtx}{α : AType} → α ∈ △ → Case -- [AVar]
---  c2 : ∀ (n : ℕ) →  Case -- [AInt]
---  c3 : Case -- [AFun]
---  c4 : Case -- [AApp]
-
--- case : ∀ {△ : ACtx}{α : AType} → (e : AExp △ α) → Case
--- case (AVar y) = c1 y
--- case (AInt _ y) = c2 y
--- case (AFun _ y y') = c3
--- case (AApp _ y y' y0) = c4
- 
--- pe₁ : ∀ {Δ : ACtx}{α₁ α₂ : AType} → AEnv Δ → (e : AExp Δ (Ann D (SFun α₂ α₁))) → ImpTA Δ (Ann D (SFun α₂ α₁))
--- pe₁ env (AFun .D y y') with case y'
--- pe₁ env (AFun .D y y') | c1 hd = EFun (EVar hd)
--- pe₁ env (AFun .D y y') | c1 (tl z') = EFun (EVar (tl z'))
--- pe₁ env (AFun .D y y') | c2 n = EFun (EInt n)
-
- 
--- partial evaluation
-pe : ∀ {Γ : Ctx}{Δ : ACtx}{α : AType} →   AEnv Γ Δ → (e : AExp Δ α) → ImpTA Γ Δ α
--- pe : ∀ {Δ : ACtx}{α : AType} → AEnv Δ → (e : AExp Δ α) → ImpTA Δ α
--- bounded variables,
--- pe  env (ABvar y) = {}
--- free variables,
-pe  env (AVar y)= {!!} -- lookup env y  --lookup env y --{!!}
--- the case of variable needs to be reconsidered
-pe  env (AInt S y) = y
-pe  env (AInt D y) = EInt y
-
--- Lu's idea,
--- pe  env (AFun D y y') = EFun (pe ((EVar hd) ∷ env) y')
--- pe  [] (AFun D y (AFun D y AVar tl hd)) =>
--- pe  [EVar hd] (AFun D y AVar tl hd)     =>
--- pe  [EVar hd,EVar tl hd] (AVar tl hd)
--- end of Lu's idea
--- note Lu's idea is not going to work
--- consider the following example,
--- pe env[] (AFun D e-wf (AVar hd))
--- what we would like to have is the following evaluation sequence,
--- pe env[] (AFun D e-wf (AVar hd)) =>
--- EFun (pe env:: EVar hd env[] AVar hd) =>
--- EFun (EVar hd)
--- however we can show that the above evaluation sequence cannot be 
--- obtained,
---  ^^^^^^-- Suppose that [AVar hd : AExp (Ann D AInt) (Ann D AInt)] and we have
--- [AFun D e-wf AVar hd : AExp [] (ATFun D (Ann D SInt)(Ann D SInt))]
--- and from which we can get the type of the resulting  expression as
--- ImpTA [] (ATFun D (Ann D SInt)(Ann D SInt)) = Exp [] (TFun TInt TInt)
--- now let us consider the type of [pe env:: EVar hd env[] AVar hd]
--- note that the type of [AVar hd] as [AExp [Ann D SInt] (Ann D SInt)] and
--- we have to construct a [AEnv (Ann D SInt)] which is [env:: EVar hd env[]]
--- according to [env::]; [EVar hd] has to have type [ImpTA [] (Ann D SInt)]
--- which is [Exp [] TInt], it is obvious that this is impossible,for variables
--- are not typable under empty context, so Lu's idea is not working. Qed.
-
-
--- pe  env (AFun D y (.(AVar z))) | (AVar z) with z
--- pe  env (AFun D y (.(AVar hd))) | (AVar z) | hd = EFun (EVar hd)
--- note that the above specification only works if all types in [△]
--- are dynamic so that the position of type on the new typing environment
--- corresponds to exactly the position of type on the old one
-
--- this problem,however,can be fixed with a simple modification of the
--- [residual] function. See [residual'] 
--- pe  env (AFun D y (.(AVar (tl z')))) | (AVar z) | tl z' = EFun (pe env (AVar z'))
-
-pe  env (AFun D y y') = {! EFun (pe (envD:: (EVar hd)))!} -- EFun (pe (env:: (EVar hd) {!!}) {!!}) -- EFun (pe (env:: (EDummy) env) y' )  -- {!!}
--- [with] method should be used here to do pattern matching
-pe  env (AFun S y y') = {!!}--λ x → pe (env:: x env) y' --{!!}
-
-
--- note that,
--- y : wft (ATFun bt α₂ α₁)
--- y': AExp (α₂ :: △) α₁
--- △ should not be changed
-pe  env (AApp S y y' y0) = {!!} -- (pe env y') (pe env y0) -- {!!}
-pe  env (AApp D y y' y0) = {!!}--EApp (pe env y') (pe env y0)  -- {!!}
-
--- end of the block
--- let us suppose that we always have a fixed typing context to begin with,
--- [△ : ACtx]
-
--- data my_AEnv : ACtx → ACtx → Set where
---   my_env[] : ∀ {Δ} →  my_AEnv Δ []
---   my_env:: : ∀ {Δ Δ'}{α : AType} → ImpTA Δ α → my_AEnv Δ Δ' → my_AEnv Δ  (α ∷ Δ')
-
--- my_lookup : ∀ {Δ Δ' : ACtx}{α : AType} → my_AEnv Δ Δ' → (α ∈ Δ') → ImpTA Δ α
--- my_lookup (my_env[]) ()
--- my_lookup (my_env:: y y') hd = y
--- my_lookup (my_env:: y' y0) (tl y1) = my_lookup y0 y1 
-
--- my partial evaluation
-
--- my_pe : ∀ {Δ : ACtx}{α : AType} → my_AEnv Δ Δ  → AExp Δ α → ImpTA Δ α
--- my_pe env (AVar y) = my_lookup env y
--- my_pe env (AInt S y) = y
--- my_pe env (AInt D y) = EInt y
--- my_pe env (AFun bgt y y') = {!!}
--- my_pe env (AApp bt y y' y0) = {!!}
