@@ -264,7 +264,7 @@ data Exp (Γ : Ctx) : Type → Set where
   EFun : ∀ {τ₁ τ₂} → Exp (τ₂ ∷ Γ) τ₁ → Exp Γ (TFun τ₂ τ₁)
   EApp : ∀ {τ₁ τ₂} → Exp Γ (TFun τ₂ τ₁) → Exp Γ τ₂ → Exp Γ τ₁
 -- one additional term,
-count_tl : ∀ {τ Γ Γ'} → τ ∈ Γ → Γ cx-≤ Γ' → τ ∈ Γ'
+count_tl : ∀ {A Γ Γ'} {τ : A} → τ ∈ Γ → Γ cx-≤ Γ' → τ ∈ Γ'
 count_tl  x (cxle-eq Γ) = x
 count_tl x  (cxle-lt T e) = tl (count_tl x e)
 
@@ -273,23 +273,16 @@ data _cx=≤_ {A : Set} : List A → List A → Set where
   cxle-peq : ∀ {l₁ l₂} { x } → l₁ cx-≤ l₂ → (x ∷ l₁) cx=≤ (x ∷ l₂)
   cxle-plt : ∀ {l₁ l₂} { x } → l₁ cx=≤ l₂ → (x ∷ l₁) cx=≤ (x ∷ l₂)
 
-get_cx-≤ : ∀{Γ₁ Γ₂ Γ₃ Γ₄} → Γ₁ cx=≤ Γ₂ → Γ₃ cx-≤ Γ₄ 
-get_cx-≤ (cxle-plt e) = get_cx-≤ e
-get_cx-≤ (cxle-peq e) = e
+count_tl' : ∀ {A  Γ Γ'} {τ : A } → τ ∈ Γ → Γ cx=≤ Γ' → τ ∈ Γ'
+count_tl' hd (cxle-plt e) = hd
+count_tl' hd (cxle-peq e) = hd
+count_tl' (tl xid) (cxle-plt e) = tl (count_tl' xid  e)
+count_tl' (tl xid) (cxle-peq e) = tl (count_tl xid e)
 
-_id≤Bid_ : ∀{τ Γ Γ'} → τ ∈ Γ → Γ cx=≤ Γ' → Bool
-(tl x) id≤Bid (cxle-plt e) = x id≤Bid e
-hd id≤Bid e = true
-(tl x) id≤Bid (cxle-peq e) = false
-
-lem-x-weakening : ∀{τ Γ Γ'} → (x : τ ∈ Γ) → (e : Γ cx=≤ Γ') → isTrue (x id≤Bid e) → τ ∈ Γ'
-lem-x-weakening = {!!}
 
 
 lem-Exp-weakening' : ∀ {τ₂ τ₁ Γ Γ'} → Exp (τ₂ ∷ Γ) τ₁ → (τ₂ ∷ Γ) cx=≤ (τ₂ ∷ Γ') → Exp (τ₂ ∷ Γ') τ₁
-lem-Exp-weakening' (EVar x) e with x id≤Bid e
-lem-Exp-weakening'  (EVar x) e | true = EVar (lem-x-weakening x e _ )
-lem-Exp-weakening'  (EVar x) e | false = EVar (count_tl x (get_cx-≤ e))
+lem-Exp-weakening' (EVar x) e  = EVar (count_tl' x e)
 lem-Exp-weakening'  (EInt n) e = EInt n
 lem-Exp-weakening'  (EFun t) e = EFun (lem-Exp-weakening' t (cxle-plt e))
 lem-Exp-weakening'  (EApp t1 t2) e = EApp (lem-Exp-weakening' t1 e) (lem-Exp-weakening' t2 e)   
@@ -366,6 +359,8 @@ lem-IsDynamic-by-wf (Ann D σ) _ = is-dyn σ
 
 -- -- TODO: Do we need additional assurance in the type signature (or as
 -- -- an aux. lemma) that Γ is the residue of Δ?
+-- -- Note: It seems that in the light of [AEnv] defined above,  
+-- --       there is no correspondence bewteen Γ and Δ
 pe : ∀ {Δ Γ α} → AEnv Γ Δ → AExp Δ α → impTA Γ α
 pe env (AVar idx) = lookup env idx
 pe env (AInt S i) = i
