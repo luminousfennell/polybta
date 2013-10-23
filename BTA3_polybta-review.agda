@@ -313,6 +313,7 @@ data AExp (Δ : ACtx) : AType → Set where
   AFun : ∀ {α₁ α₂} (bt : BT) → wft (ATFun bt α₂ α₁) → AExp (α₂ ∷ Δ) α₁ → AExp Δ (ATFun bt α₂ α₁)
   AApp : ∀ {α₁ α₂} (bt : BT) → wft (ATFun bt α₂ α₁) → AExp Δ (ATFun bt α₂ α₁) → AExp Δ α₂ → AExp Δ α₁
 
+-- PT: why wft in the AApp case? everything in Δ should be wft!
 
 -- stripping of contexts
 residual : ACtx → Ctx
@@ -332,7 +333,16 @@ mutual
   impTA' : Ctx → SType → Set
   impTA' Γ SInt = ℕ
   -- impTA' Γ (SFun y y') = impTA Γ y → impTA Γ y'
-  impTA' Γ (SFun y y') = ∀ {Γ'} → Γ cx-≤ Γ' → impTA Γ' y → impTA Γ' y'
+  impTA' Γ (SFun y y') = ∀ {Γ'} → Γ cx-≤ Γ' → (impTA Γ' y → impTA Γ' y')
+
+{-
+assumption: Γ binds all dynamic variables Γ = f:Int -> Int
+λ_ x. f @_ x : Int_ -> Int_
+ImpTA Γ (Int_ -> Int_) = Exp Γ ℕ -> Exp Γ ℕ 
+
+f : Int_ ->_ Int_
+ImpTA Γ (Int_ ->_ Int_) = Exp Γ (Int -> Int)
+-}
 
 lem-impTA-weakening : ∀ {α Γ Γ'} →
                       impTA Γ α →
