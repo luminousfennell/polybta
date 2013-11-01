@@ -4,5 +4,6 @@ cabal-dev
 *.hi
 *.chi
 *.chs.h
+*.agdai
 .virthualenv
 /lib/
