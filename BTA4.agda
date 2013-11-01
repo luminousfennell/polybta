@@ -135,21 +135,6 @@ unfold-forget : ∀ bt {bt₁} {bt₂} at₁ at₂ x₅ x₆ →
   forget-wft (AFun bt  {bt₁} {bt₂} at₁ at₂ x₅ x₆) ≡ ATFun bt (forget-wft at₁) (forget-wft at₂)
 unfold-forget bt at₁ at₂ x₅ x₆ = refl
 
-{-
-infer-wft''-help : ∀ x x₁ x₂ bt₁ bt₂ x₅ x₆ → (at₁ : AType' bt₁) (at₂ : AType' bt₂) → 
-  x₁ ≡ forget-wft at₁ → x₂ ≡ forget-wft at₂ → Ann x (SFun x₁ x₂) ≡ forget-wft (AFun x at₁ at₂ x₅ x₆)
-infer-wft''-help  x x₁ x₂ bt₁ bt₂ x₅ x₆ at₁ at₂ p₁ p₂ = {!!}
-
-infer-wft'' : (α : AType) → Inferred WF-Problem (Σ (AType' (btof α)) λ at → α ≡ forget-wft at)
-infer-wft'' (Ann x SInt) = Ok (AInt x , refl)
-infer-wft'' (Ann x (SFun x₁ x₂))
-  with infer-wft'' x₁ | infer-wft'' x₂ | infer-bt-leq x (btof x₁) | infer-bt-leq x (btof x₂)
-infer-wft'' (Ann x (SFun x₁ x₂)) | Ok (at₁ , at₁-ok) | Ok (at₂ , at₂-ok) | Ok x₅ | Ok x₆ = Ok (AFun x at₁ at₂ x₅ x₆ , {!refl!})
-infer-wft'' (Ann x (SFun x₁ x₂)) | Ok x₃ | Ok x₄ | Ok x₅ | Error x₆ = Error (WF-LEQ-right x₆)
-infer-wft'' (Ann x (SFun x₁ x₂)) | Ok x₃ | Ok x₄ | Error x₅ | btok2 = Error (WF-LEQ-left x₅)
-infer-wft'' (Ann x (SFun x₁ x₂)) | Ok x₃ | Error x₄ | btok1 | btok2 = Error (WF-WF-right x₄)
-infer-wft'' (Ann x (SFun x₁ x₂)) | Error x₃ | inf2 | btok1 | btok2 = Error (WF-WF-left x₃)
--}
 
 -- well-formedness
 data wft : AType → Set where
@@ -165,15 +150,11 @@ infer-lemma-fun-right α σ (wf-fun v v₁ x ())
 
 
 infer-yes-yes : ∀ bt α₁ α₂ → (wf1 : wft α₁) (wf2 : wft α₂) → Dec (wft (Ann bt (SFun α₁ α₂)))
-infer-yes-yes bt α₁ α₂ wf1 wf2
-  with bt ≼ btof α₁ | bt ≼ btof α₂ 
-infer-yes-yes S (Ann bt1 σ₁) (Ann bt2 σ₂) wf1 wf2 | true | true = yes (wf-fun wf1 wf2 _ _)
-infer-yes-yes D (Ann D σ₁) (Ann D σ₂) wf1 wf2 | true | true = yes (wf-fun wf1 wf2 _ _)
-infer-yes-yes D (Ann S σ₁) (Ann bt2 σ₂) wf1 wf2 | true | true = no (infer-lemma-fun-left σ₁ (Ann bt2 σ₂))
-infer-yes-yes D (Ann bt1 σ₁) (Ann S σ₂) wf1 wf2 | true | true = no (infer-lemma-fun-right (Ann bt1 σ₁) σ₂)
-infer-yes-yes bt α₁ α₂ wf1 wf2 | true | false = {!!}
-infer-yes-yes bt α₁ α₂ wf1 wf2 | false | true = {!!}
-infer-yes-yes bt α₁ α₂ wf1 wf2 | false | false = {!!}
+infer-yes-yes S (Ann bt1 σ₁) (Ann bt2 σ₂) wf1 wf2 = yes (wf-fun wf1 wf2 _ _)
+infer-yes-yes D (Ann D σ₁) (Ann D σ₂) wf1 wf2     = yes (wf-fun wf1 wf2 _ _)
+infer-yes-yes D (Ann S σ₁) (Ann bt2 σ₂) wf1 wf2   = no (infer-lemma-fun-left σ₁ (Ann bt2 σ₂))
+infer-yes-yes D (Ann bt1 σ₁) (Ann S σ₂) wf1 wf2   = no (infer-lemma-fun-right (Ann bt1 σ₁) σ₂)
+
 
 
 infer-lemma-arg-left : ∀ bt α₁ α₂ → ¬ wft α₁ → ¬ wft (Ann bt (SFun α₁ α₂))
@@ -192,11 +173,13 @@ infer-wft (Ann bt (SFun α₁ α₂))
 ... | no ¬wf1 | yes wf2 = no (infer-lemma-arg-left bt α₁ α₂ ¬wf1)
 ... | no ¬wf1 | no ¬wf2 = no (infer-lemma-arg-left bt α₁ α₂ ¬wf1)
 
-
--- Untyped expressions
+----------------------------------------------------------------------
+-- step 0
+-- Untyped expressions, incorrect results
 data Exp : Set where
   EVar : ℕ → Exp
   EInt : ℕ → Exp
+  EAdd : Exp → Exp → Exp
   ELam : Exp → Exp
   EApp : Exp → Exp → Exp
 
@@ -220,6 +203,7 @@ ACtx = List AType
 data AExp (Δ : ACtx) : AType → Set where
   AVar : ∀ {α} → α ∈ Δ → AExp Δ α
   AInt : (bt : BT) → ℕ → AExp Δ (ATInt bt)
+  AAdd : (bt : BT) → AExp Δ (ATInt bt) → AExp Δ (ATInt bt) → AExp Δ (ATInt bt)
   ALam : ∀ {α₁ α₂} (bt : BT) → wft (ATFun bt α₂ α₁) → AExp (α₂ ∷ Δ) α₁ → AExp Δ (ATFun bt α₂ α₁)
   AApp : ∀ {α₁ α₂} (bt : BT) → wft (ATFun bt α₂ α₁) → AExp Δ (ATFun bt α₂ α₁) → AExp Δ α₂ → AExp Δ α₁
 
@@ -236,6 +220,7 @@ lemma-wft-var (wft-:: x wc) (tl pf) = lemma-wft-var wc pf
 lemma-wft : ∀ {α Δ} → wft-context Δ → AExp Δ α → wft α
 lemma-wft wc (AVar x) = lemma-wft-var wc x
 lemma-wft wc (AInt bt x) = wf-int
+lemma-wft wc (AAdd bt ae₁ ae₂) = wf-int
 lemma-wft wc (ALam bt x ae) = x
 lemma-wft wc (AApp bt _ ae ae₁)
   with lemma-wft wc ae 
@@ -261,6 +246,8 @@ peval : ∀ {α Δ } → AExp Δ α → AEnv Δ → ImpTA α
 peval (AVar x) env = lookup env x
 peval (AInt S x) env = x
 peval (AInt D x) env = EInt x
+peval (AAdd S e₁ e₂) env = peval e₁ env + peval e₂ env
+peval (AAdd D e₁ e₂) env = EAdd (peval e₁ env) (peval e₂ env)
 peval (ALam {α₂} {α₁} S w e) env = λ y → peval e (AE∷ α₁ y env)
 peval (ALam {α₂} {α₁} D (wf-fun w₁ w₂ d≤bt₁ d≤bt₂) e) env 
   with lem-IsDynamic-by-wf α₁ d≤bt₁ | lem-IsDynamic-by-wf α₂ d≤bt₂ 
@@ -272,10 +259,13 @@ peval (AApp {α₂} {α₁} D (wf-fun w₁ w₂ d≤bt₁ d≤bt₂) e e₁) env
 peval (AApp {.(Ann D σ₂)} {.(Ann D σ₁)} D (wf-fun _ _ d≤bt₁ d≤bt₂) e e₁) env 
   | is-dyn σ₁ | is-dyn σ₂ = EApp (peval e env) (peval e₁ env)
 
+----------------------------------------------------------------------
+-- step 1
 -- Untyped expression, but correctly scoped
 data Exp' : ℕ → Set where
   EVar : ∀ {n} → Fin n → Exp' n
   EInt : ∀ {n} → ℕ → Exp' n
+  EAdd : ∀ {n} → Exp' n → Exp' n → Exp' n
   ELam : ∀ {n} → Exp' (suc n) → Exp' n
   EApp : ∀ {n} → Exp' n → Exp' n → Exp' n
 
@@ -323,12 +313,14 @@ xlate {m} {n} e rewrite m+1+n≡1+m+n m n | +-comm m n = e
 shifter1 : ∀ {n} m → Exp' (suc n) → Exp' (suc (n + m))
 shifter1 {n} m (EVar x) = xlate {m} (EVar (raise m x)) 
 shifter1 m (EInt x) = EInt x
+shifter1 m (EAdd e₁ e₂) = EAdd (shifter1 m e₁) (shifter1 m e₂)
 shifter1 m (ELam e) = ELam (shifter1 m e)
 shifter1 m (EApp e e₁) = EApp (shifter1 m e) (shifter1 m e₁)
 
 shifter0 : ∀ m → Exp' zero → Exp' m
 shifter0 m (EVar ())
 shifter0 m (EInt x) = EInt x
+shifter0 m (EAdd e₁ e₂) = EAdd (shifter0 m e₁) (shifter0 m e₂)
 shifter0 m (ELam e) = ELam (shifter1 m e)
 shifter0 m (EApp e e₁) = EApp (shifter0 m e) (shifter0 m e₁)
 
@@ -370,6 +362,8 @@ pe1 : ∀ {α Δ} m → AExp Δ α → AEnv1 m Δ → Imp m α
 pe1 m (AVar x) env = lookup1 ≤-refl env x
 pe1 m (AInt S x) env = x
 pe1 m (AInt D x) env = EInt x
+pe1 m (AAdd S e₁ e₂) env = pe1 m e₁ env + pe1 m e₂ env
+pe1 m (AAdd D e₁ e₂) env = EAdd (pe1 m e₁ env) (pe1 m e₂ env)
 pe1 m (ALam S x e) env = λ o p → λ v → pe1 o e (consS p _ v env)
 pe1 m (ALam {α₂} {α₁} D (wf-fun w₁ w₂ d≤bt₁ d≤bt₂) e) env 
   with lem-IsDynamic-by-wf α₁ d≤bt₁ | lem-IsDynamic-by-wf α₂ d≤bt₂ 
@@ -386,11 +380,49 @@ term1 : AExp [] (ATInt D)
 term1 = AInt D 42
 
 term2 : AExp [] (ATFun D (ATInt D) (ATInt D))
-term2 = ALam D {!!} (AVar hd)
+term2 = ALam D (wf-fun wf-int wf-int _ _) (AVar hd)
 -- Dλ y → let f = λ x → x D+ y in Dλ z → f z
 -- Dλ y → let f = λ x → (Dλ w → x D+ y) in Dλ z → f z
+-- Dλ y → (λ f → Dλ z → f z) (λ x → (Dλ w → x D+ y))
+-- :: DInt D→ (DT  D→ DInt)
+-- y : DInt, f : DInt → (DT  D→ DInt)
+
+term3-0 : AExp (Ann D SInt ∷ Ann D SInt ∷ Ann D SInt ∷ []) (Ann D SInt)
+term3-0 = AAdd D (AVar (tl (tl hd))) (AVar (tl hd))
+
+term3-1 : AExp (Ann D SInt ∷ Ann D SInt ∷ []) (Ann D (SFun (Ann D SInt) (Ann D SInt)))
+term3-1 = ALam D (wf-fun wf-int wf-int _ _) term3-0
+
+term3-2 : AExp (Ann D SInt ∷ []) (Ann S (SFun (Ann D SInt) (Ann D (SFun (Ann D SInt) (Ann D SInt)))))
+term3-2 = ALam S (wf-fun wf-int (wf-fun wf-int wf-int _ _) _ _) term3-1
+
+
+term3-3 : AExp (Ann D SInt ∷ Ann S (SFun (Ann D SInt) (Ann D (SFun (Ann D SInt) (Ann D SInt)))) ∷ Ann D SInt ∷ [])
+               (Ann D (SFun (Ann D SInt) (Ann D SInt)))
+term3-3 = AApp S (wf-fun wf-int (wf-fun wf-int wf-int _ _) _ _) (AVar (tl hd)) (AVar hd)
+
+term3-4 : AExp (Ann S (SFun (Ann D SInt) (Ann D (SFun (Ann D SInt) (Ann D SInt)))) ∷ Ann D SInt ∷ [])
+               (Ann D (SFun (Ann D SInt) (Ann D (SFun (Ann D SInt) (Ann D SInt)))))
+term3-4 = ALam D (wf-fun wf-int (wf-fun wf-int wf-int _ _) _ _) term3-3
+
+term3-5 : AExp (Ann D SInt ∷ [])
+               (Ann S (SFun (Ann S (SFun (Ann D SInt) (Ann D (SFun (Ann D SInt) (Ann D SInt)))))
+                            (Ann D (SFun (Ann D SInt) (Ann D (SFun (Ann D SInt) (Ann D SInt)))))))
+term3-5 = ALam S (wf-fun (wf-fun wf-int (wf-fun wf-int wf-int _ _) _ _) (wf-fun wf-int (wf-fun wf-int wf-int _ _) _ _) _ _) term3-4
+
+term3-6 : AExp (Ann D SInt ∷ [])
+               (Ann D (SFun (Ann D SInt) (Ann D (SFun (Ann D SInt) (Ann D SInt)))))
+term3-6 = AApp S (wf-fun (wf-fun wf-int (wf-fun wf-int wf-int _ _) _ _) (wf-fun wf-int (wf-fun wf-int wf-int _ _) _ _) _ _) term3-5 term3-2
+
+term3 : AExp [] (Ann D (SFun (Ann D SInt) (Ann D (SFun (Ann D SInt) (Ann D (SFun (Ann D SInt) (Ann D SInt)))))))
+term3 = ALam D (wf-fun wf-int (wf-fun wf-int (wf-fun wf-int wf-int _ _) _ _) _ _) term3-6
+
+
+-- conclusion: you want type inference ...
+
 
 -------------------------------------------------------------------------------
+-- step 2
 -- now let's do everything typed
 
 data Type : Set where
@@ -403,18 +435,31 @@ data _↝_ : Ctx → Ctx → Set where
   ↝-refl   : ∀ {Γ}      → Γ ↝ Γ
   ↝-extend : ∀ {Γ Γ' τ} → Γ ↝ Γ' → Γ ↝ (τ ∷ Γ')
 
+↝-≤ : ∀ Γ Γ' → Γ ↝ Γ' → length Γ ≤ length Γ'
+↝-≤ .Γ' Γ' ↝-refl = ≤-refl
+↝-≤ Γ .(τ ∷ Γ') (↝-extend {.Γ} {Γ'} {τ} Γ↝Γ') = ≤-suc-right (↝-≤ Γ Γ' Γ↝Γ')
+
+↝-no-left : ∀ Γ τ → ¬ (τ ∷ Γ) ↝ Γ
+↝-no-left Γ τ p = 1+n≰n (↝-≤ (τ ∷ Γ) Γ p)
+
 ↝-trans : ∀ {Γ Γ' Γ''} → Γ ↝ Γ' → Γ' ↝ Γ'' → Γ ↝ Γ''
 ↝-trans Γ↝Γ' ↝-refl = Γ↝Γ'
 ↝-trans Γ↝Γ' (↝-extend Γ'↝Γ'') = ↝-extend (↝-trans Γ↝Γ' Γ'↝Γ'')
+
+lem : ∀ x y xs xs' → (x ∷ xs) ↝ xs' → xs ↝ (y ∷ xs')
+lem x y xs .(x ∷ xs) ↝-refl = ↝-extend (↝-extend ↝-refl)
+lem x y xs .(x' ∷ xs') (↝-extend {.(x ∷ xs)} {xs'} {x'} p) = ↝-extend (lem x x' xs xs' p)
+
 
 data _↝_↝_ : Ctx → Ctx → Ctx → Set where
   ↝↝-base   : ∀ {Γ Γ''} → Γ ↝ Γ'' → Γ ↝ [] ↝ Γ''
   ↝↝-extend : ∀ {Γ Γ' Γ'' τ} → Γ ↝ Γ' ↝ Γ'' → (τ ∷ Γ) ↝ (τ ∷ Γ') ↝ (τ ∷ Γ'')
 
--- Untyped expression, but correctly scoped
+-- Typed residula expressions
 data Exp'' (Γ : Ctx) : Type → Set where
   EVar : ∀ {τ} → τ ∈ Γ → Exp'' Γ τ
   EInt : ℕ → Exp'' Γ Int
+  EAdd : Exp'' Γ Int → Exp'' Γ Int -> Exp'' Γ Int
   ELam : ∀ {τ τ'} → Exp'' (τ ∷ Γ) τ' → Exp'' Γ (Fun τ τ')
   EApp : ∀ {τ τ'} → Exp'' Γ (Fun τ τ')  → Exp'' Γ τ → Exp'' Γ τ'
 
@@ -448,6 +493,7 @@ elevate-var2 (↝↝-extend Γ↝Γ'↝Γ'') (tl x) = tl (elevate-var2 Γ↝Γ'�
 elevate : ∀ {Γ Γ' Γ'' τ} → Γ ↝ Γ' ↝ Γ'' → Exp'' Γ τ → Exp'' Γ'' τ
 elevate Γ↝Γ'↝Γ'' (EVar x) = EVar (elevate-var2 Γ↝Γ'↝Γ'' x)
 elevate Γ↝Γ'↝Γ'' (EInt x) = EInt x
+elevate Γ↝Γ'↝Γ'' (EAdd e e₁) = EAdd (elevate Γ↝Γ'↝Γ'' e) (elevate Γ↝Γ'↝Γ'' e₁)
 elevate Γ↝Γ'↝Γ'' (ELam e) = ELam (elevate (↝↝-extend Γ↝Γ'↝Γ'') e)
 elevate Γ↝Γ'↝Γ'' (EApp e e₁) = EApp (elevate Γ↝Γ'↝Γ'' e) (elevate Γ↝Γ'↝Γ'' e₁)
 
@@ -460,13 +506,26 @@ lookup2 : ∀ {α Δ Γ Γ'} → Γ ↝ Γ' → AEnv2 Γ Δ → α ∈ Δ → Im
 lookup2 Γ↝Γ' (consS p α v env) hd = lift2 α Γ↝Γ' v
 lookup2 Γ↝Γ' (consS p α₁ v env) (tl x) = lookup2 (↝-trans p Γ↝Γ') env x
 lookup2 Γ↝Γ' (consD α D≼α v env) hd = lift2 α Γ↝Γ' v
-lookup2 Γ↝Γ' (consD α₁ D≼α v env) (tl x) = lookup2 {!!} env x
-
+lookup2 ↝-refl (consD α₁ D≼α v env) (tl x) = lookup2 (↝-extend ↝-refl) env x
+lookup2 (↝-extend Γ↝Γ') (consD α₁ D≼α v env) (tl x) = lookup2 (lem (erase α₁) _ _ _ Γ↝Γ') env x
 
 pe2 : ∀ {α Δ} Γ → AExp Δ α → AEnv2 Γ Δ → Imp'' Γ α
 pe2 Γ (AVar x) env = lookup2 ↝-refl env x
 pe2 Γ (AInt S x) env = x
 pe2 Γ (AInt D x) env = EInt x
-pe2 Γ (ALam bt w e) env = {!!}
-pe2 Γ (AApp bt w e₁ e₂) env = {!!}
+pe2 Γ (AAdd S e₁ e₂) env = pe2 Γ e₁ env + pe2 Γ e₂ env
+pe2 Γ (AAdd D e₁ e₂) env = EAdd (pe2 Γ e₁ env) (pe2 Γ e₂ env)
+pe2 {Ann S (SFun α₂ α₁)} Γ (ALam .S w e) env = λ Γ' Γ↝Γ' → λ y → pe2 {α₁} Γ' e (consS Γ↝Γ' α₂ y env)
+pe2 Γ (ALam {α₂} {α₁} D (wf-fun w₁ w₂ d≤bt₁ d≤bt₂) e) env 
+  with lem-IsDynamic-by-wf α₁ d≤bt₁ | lem-IsDynamic-by-wf α₂ d≤bt₂ 
+pe2 Γ (ALam {.(Ann D σ₂)} {.(Ann D σ₁)} D (wf-fun _ _ d≤bt₁ d≤bt₂) e) env
+  | is-dyn σ₁ | is-dyn σ₂ = ELam (pe2 (erase (Ann D σ₁) ∷ Γ) e (consD (Ann D σ₁) d≤bt₁ (EVar hd) env))
+pe2 Γ (AApp S w e₁ e₂) env = pe2 Γ e₁ env Γ ↝-refl (pe2 Γ e₂ env)
+pe2 Γ (AApp {α₂} {α₁} D (wf-fun w₁ w₂ d≤bt₁ d≤bt₂) e e₁) env 
+  with lem-IsDynamic-by-wf α₁ d≤bt₁ | lem-IsDynamic-by-wf α₂ d≤bt₂ 
+pe2 Γ (AApp {.(Ann D σ₂)} {.(Ann D σ₁)} D (wf-fun w₁ w₂ d≤bt₁ d≤bt₂) e e₁) env
+  | is-dyn σ₁ | is-dyn σ₂ = EApp (pe2 Γ e env) (pe2 Γ e₁ env)
 
+pe2-term1 = pe2 [] term1 []
+pe2-term2 = pe2 [] term2 []
+pe2-term3 = pe2 [] term3 [] 
