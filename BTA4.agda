@@ -121,15 +121,16 @@ infer-wft' (Ann x₄ (SFun x₁ x₂)) | Ok x | Ok x₃ | Error x₅ | okbt2 = E
 infer-wft' (Ann x₄ (SFun x₁ x₂)) | Ok x | Error x₃ | _ | _ = Error (WF-WF-right x₃)
 infer-wft' (Ann x₃ (SFun x₁ x₂)) | Error x | r2 | _ | _ = Error (WF-WF-left x)
 
-{-
--- urgh: it might be easier to infer a Σ type of the form
--- ∃ at (α ≡ forget-wft at)
-infer-sensible : ∀ α at → infer-wft' α ≡ Ok at → α ≡ forget-wft at
-infer-sensible (Ann x SInt) (AInt .x) p = refl
-infer-sensible (Ann x (SFun x₁ x₂)) (AInt .x) p = {!!}
-infer-sensible (Ann x SInt) (AFun .x at at₁ x₂ x₃) ()
-infer-sensible (Ann x (SFun x₁ x₂)) (AFun .x at at₁ x₃ x₄) p = {!!}
--}
+-- might be easier to infer a Σ type
+check-wft : (α : AType) → Inferred WF-Problem (∃ λ α' → α ≡ forget-wft {btof α} α')
+check-wft (Ann x SInt) = Ok (AInt x , refl)
+check-wft (Ann x (SFun x₁ x₂)) with check-wft x₁ | check-wft x₂ | infer-bt-leq x (btof x₁) | infer-bt-leq x (btof x₂)
+... | Ok (α₁ , pr₁) | Ok (α₂ , pr₂) | Ok leq₁ | Ok leq₂ = Ok (AFun x α₁ α₂ leq₁ leq₂ , cong₂ (λ x₃ x₄ → Ann x (SFun x₃ x₄)) pr₁ pr₂)
+... | Ok p₁ | Ok p₂ | Ok leq₁ | Error e₄ = Error (WF-LEQ-right e₄)
+... | Ok p₁ | Ok p₂ | Error e₃ | _ = Error (WF-LEQ-left e₃)
+... | Ok p₁ | Error e₂ | _ | _ = Error (WF-WF-right e₂)
+... | Error e₁ | _ | _ | _ = Error (WF-WF-left e₁)
+
 
 unfold-forget : ∀ bt {bt₁} {bt₂} at₁ at₂ x₅ x₆ →
   forget-wft (AFun bt  {bt₁} {bt₂} at₁ at₂ x₅ x₆) ≡ ATFun bt (forget-wft at₁) (forget-wft at₂)
