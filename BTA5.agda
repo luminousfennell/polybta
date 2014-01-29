@@ -8,7 +8,6 @@ open import Data.Nat.Properties
 
 open import Relation.Nullary
 
-
 -----------------
 -- CLEANUP (∈) : this is surely in the standard library
 -----------------
@@ -111,7 +110,7 @@ data AExp (Δ : ACtx) : AType → Set where
 -- -- index Γ = nesting level of dynamic definitions / dynamic environment
 Imp'' : Ctx → AType → Set
 Imp'' Γ (AInt) = ℕ
-Imp'' Γ (AFun α₁ α₂) = ∀ Γ' → Γ ↝ Γ' → (Imp'' Γ' α₁ → Imp'' Γ' α₂)
+Imp'' Γ (AFun α₁ α₂) = ∀ {Γ'} → Γ ↝ Γ' → (Imp'' Γ' α₁ → Imp'' Γ' α₂)
 Imp'' Γ (D σ) = Exp'' Γ σ
 
 
@@ -141,7 +140,7 @@ elevate Γ↝Γ'↝Γ'' (EApp e e₁) = EApp (elevate Γ↝Γ'↝Γ'' e) (elevat
 
 lift2 : ∀ {Γ Γ'} α → Γ ↝ Γ' → Imp'' Γ α → Imp'' Γ' α 
 lift2 AInt p v = v
-lift2 (AFun x x₁) Γ↝Γ' v = λ Γ'' Γ'↝Γ'' → v Γ'' (↝-trans Γ↝Γ' Γ'↝Γ'')
+lift2 (AFun x x₁) Γ↝Γ' v = λ Γ'↝Γ'' → v (↝-trans Γ↝Γ' Γ'↝Γ'')
 lift2 (D x₁) Γ↝Γ' v = elevate (↝↝-base Γ↝Γ') v
 
 lookup2 : ∀ {α Δ Γ Γ'} → Γ ↝ Γ' → AEnv2 Γ Δ → α ∈ Δ → Imp'' Γ' α
@@ -151,29 +150,43 @@ lookup2 Γ↝Γ' (consD α v env) hd = lift2 (D α) Γ↝Γ' v
 lookup2 ↝-refl (consD α₁ v env) (tl x) = lookup2 (↝-extend ↝-refl) env x
 lookup2 (↝-extend Γ↝Γ') (consD α₁ v env) (tl x) = lookup2 (lem α₁ _ _ _ Γ↝Γ') env x
 
-pe2 : ∀ {α Δ} Γ → AExp Δ α → AEnv2 Γ Δ → Imp'' Γ α
-pe2 Γ (AVar x) env = lookup2 ↝-refl env x
-pe2 Γ (AInt x) env = x
-pe2 Γ (AAdd e₁ e₂) env = pe2 Γ e₁ env + pe2 Γ e₂ env
-pe2 {AFun α₂ α₁} Γ  (ALam e) env = λ Γ' Γ↝Γ' → λ y → pe2 Γ' e (consS Γ↝Γ' α₂ y env)
-pe2 Γ (AApp e₁ e₂) env = pe2 Γ e₁ env Γ ↝-refl (pe2 Γ e₂ env)
-pe2 Γ (DInt x) env = EInt x
-pe2 Γ (DAdd e e₁) env = EAdd (pe2 Γ e env) (pe2 Γ e₁ env)
-pe2 {D (Fun σ₁ σ₂)}Γ (DLam e) env = ELam (pe2 (σ₁ ∷ Γ) e (consD σ₁ (EVar hd) env))
-pe2 Γ (DApp e e₁) env = EApp (pe2 Γ e env) (pe2 Γ e₁ env)
--- pe2 Γ (AVar x) env = lookup2 ↝-refl env x
--- pe2 Γ (AInt S x) env = x
--- pe2 Γ (AInt D x) env = EInt x
--- pe2 Γ (AAdd S e₁ e₂) env = pe2 Γ e₁ env + pe2 Γ e₂ env
--- pe2 Γ (AAdd D e₁ e₂) env = EAdd (pe2 Γ e₁ env) (pe2 Γ e₂ env)
--- pe2 {Ann S (SFun α₂ α₁)} Γ (ALam .S w e) env = λ Γ' Γ↝Γ' → λ y → pe2 {α₁} Γ' e (consS Γ↝Γ' α₂ y env)
--- pe2 Γ (ALam {α₂} {α₁} D (wf-fun w₁ w₂ d≤bt₁ d≤bt₂) e) env 
---   with lem-IsDynamic-by-wf α₁ d≤bt₁ | lem-IsDynamic-by-wf α₂ d≤bt₂ 
--- pe2 Γ (ALam {.(Ann D σ₂)} {.(Ann D σ₁)} D (wf-fun _ _ d≤bt₁ d≤bt₂) e) env
---   | is-dyn σ₁ | is-dyn σ₂ = ELam (pe2 (erase (Ann D σ₁) ∷ Γ) e (consD (Ann D σ₁) d≤bt₁ (EVar hd) env))
--- pe2 Γ (AApp S w e₁ e₂) env = pe2 Γ e₁ env Γ ↝-refl (pe2 Γ e₂ env)
--- pe2 Γ (AApp {α₂} {α₁} D (wf-fun w₁ w₂ d≤bt₁ d≤bt₂) e e₁) env 
---   with lem-IsDynamic-by-wf α₁ d≤bt₁ | lem-IsDynamic-by-wf α₂ d≤bt₂ 
--- pe2 Γ (AApp {.(Ann D σ₂)} {.(Ann D σ₁)} D (wf-fun w₁ w₂ d≤bt₁ d≤bt₂) e e₁) env
---   | is-dyn σ₁ | is-dyn σ₂ = EApp (pe2 Γ e env) (pe2 Γ e₁ env)
+pe2 : ∀ {α Δ Γ} → AExp Δ α → AEnv2 Γ Δ → Imp'' Γ α
+pe2 (AVar x) env = lookup2 ↝-refl env x
+pe2 (AInt x) env = x
+pe2 (AAdd e₁ e₂) env = pe2 e₁ env + pe2 e₂ env
+pe2 {AFun α₂ α₁} (ALam e) env = λ Γ↝Γ' → λ y → pe2 e (consS Γ↝Γ' α₂ y env)
+pe2 (AApp e₁ e₂) env = ((pe2 e₁ env) ↝-refl) (pe2 e₂ env)
+pe2 (DInt x) env = EInt x
+pe2 (DAdd e e₁) env = EAdd (pe2 e env) (pe2 e₁ env)
+pe2 {D (Fun σ₁ σ₂)} (DLam e) env = ELam (pe2 e (consD σ₁ (EVar hd) env))
+                                                 -- ELam (pe2 (consS (↝-extend {τ = σ₁} ↝-refl) (D σ₁) (EVar hd) env)) works too;
+                                                 -- it is probably a canonical solution, but I (Lu) do not see why...
+pe2 (DApp e e₁) env = EApp (pe2 e env) (pe2 e₁ env)
+
+module Examples where
+  open import Relation.Binary.PropositionalEquality
+
+  x : ∀ {α Δ} → AExp (α ∷ Δ) α
+  x = AVar hd
+  y : ∀ {α₁ α Δ} → AExp (α₁ ∷ α ∷ Δ) α
+  y = AVar (tl hd)
+  z : ∀ {α₁ α₂ α Δ} → AExp (α₁ ∷ α₂ ∷ α ∷ Δ) α
+  z = AVar (tl (tl hd))
+
+-- Dλ y → let f = λ x → x D+ y in Dλ z → f z
+  term1 : AExp [] (D (Fun Int (Fun Int Int)))
+  term1 = DLam (AApp (ALam (DLam (AApp (ALam y) x)))
+                     ((ALam (DAdd x y))))
+
+-- Dλ y → let f = λ x → (Dλ w → x D+ y) in Dλ z → f z
+-- Dλ y → (λ f → Dλ z → f z) (λ x → (Dλ w → x D+ y))
+  term2 : AExp [] (D (Fun Int (Fun Int Int)))
+  term2 = DLam (AApp (ALam (DLam (AApp (ALam y) x)))
+                     ((ALam (DLam {α₂ = Int} (DAdd y z)))))
+
+  ex-pe-term1 : pe2 term1 [] ≡ ELam (ELam (EVar hd))
+  ex-pe-term1 = refl
+
+  ex-pe-term2 : pe2 term2 [] ≡ ELam (ELam (EVar hd))
+  ex-pe-term2 = refl
 
