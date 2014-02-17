@@ -22,7 +22,7 @@ module ListReference where
 open ListReference
 
 -- Extension of lists at the front and, as a generalization, extension
--- of lists somewhere in the middle. 
+-- of lists somewhere in the middle.
 module ListExtension where 
   open import Relation.Binary.PropositionalEquality
 
@@ -53,17 +53,31 @@ module ListExtension where
 open ListExtension
 
 ---------------------------------------
--- Start of the developement:
+-- Start of the development:
 ---------------------------------------
 
--- The residual language: a standard simply typed λ-calculus.
--- The types are integers and functions.
+-- Intro/Objective:
+-------------------
+-- The following development defines a (verified) specializer/partial
+-- evaluator for a simply typed lambda calculus embedded in Agda using
+-- deBruijn indices.
+
+-- The residual language.
+-------------------------
+
+-- The residual language is a standard simply typed λ-calculus.  The
+-- types are integers and functions.
 data Type : Set where
   Int : Type
   Fun : Type → Type → Type
 Ctx = List Type
 
--- Typed residual expressions
+-- The type Exp describes the typed residual expressions. Variables
+-- are represented by deBruijn indices that form references into the
+-- typing context. The constructors and typing constraints are
+-- standard.
+
+-- TODO: citations for ``as usual'' and ``standard''
 data Exp (Γ : Ctx) : Type → Set where
   EVar : ∀ {τ} → τ ∈ Γ → Exp Γ τ
   EInt : ℕ → Exp Γ Int
@@ -72,22 +86,27 @@ data Exp (Γ : Ctx) : Type → Set where
   EApp : ∀ {τ τ'} → Exp Γ (Fun τ τ')  → Exp Γ τ → Exp Γ τ'
 
 -- The standard functional semantics of the residual expressions. 
+-- TODO: citations for ``as usual'' and ``standard''
 module Exp-Eval where
   -- interpretation of Exp types
   EImp : Type → Set
   EImp Int = ℕ
   EImp (Fun τ₁ τ₂) = EImp τ₁ → EImp τ₂
 
-  -- Exp environments
+  -- Environments containing values for free variables. An environment
+  -- is indexed by a typing context that provides the types for the
+  -- contained values.
   data Env : Ctx → Set where 
     [] : Env []
     _∷_ : ∀ {τ Γ} → EImp τ → Env Γ → Env (τ ∷ Γ)
   
+  -- Lookup a value in the environment, given a reference into the
+  -- associated typing context.
   lookupE : ∀ { τ Γ } → τ ∈ Γ → Env Γ → EImp τ
   lookupE hd (x ∷ env) = x
   lookupE (tl v) (x ∷ env) = lookupE v env
 
-  -- evaluation of Exp
+  -- Evaluation of residual terms, given a suitably typed environment.
   ev : ∀ {τ Γ} → Exp Γ τ → Env Γ → EImp τ
   ev (EVar x) env = lookupE x env
   ev (EInt x) env = x
@@ -97,6 +116,7 @@ module Exp-Eval where
 
 
 -- The binding-time-annotated language. 
+---------------------------------------
 
 -- The type of a term determines the term's binding time. The type
 -- constructors with an A-prefix denote statically bound integers and
@@ -166,12 +186,12 @@ module AType-WF where
                                           (lem-wf-AType (D x))
                                           (lem-wf-AType (D x₁))
              
-    
-
-
--- 
+-- The typed annotated terms: The binding times of variables is
+-- determined by the corresponding type-binding in the context. In the
+-- other cases, the A- and D-prefixes on term constructors inidicate
+-- the corresponding binding times for the resulting terms.
 data AExp (Δ : ACtx) : AType → Set where
-  AVar : ∀ {α} → α ∈ Δ → AExp Δ α
+  Var : ∀ {α} → α ∈ Δ → AExp Δ α
   AInt : ℕ → AExp Δ AInt
   AAdd : AExp Δ AInt → AExp Δ AInt → AExp Δ AInt
   ALam : ∀ {α₁ α₂}   → AExp (α₁ ∷ Δ) α₂ → AExp Δ (AFun α₁ α₂)
@@ -181,7 +201,49 @@ data AExp (Δ : ACtx) : AType → Set where
   DLam : ∀ {σ₁ σ₂}   → AExp ((D σ₁) ∷ Δ) (D σ₂) → AExp Δ (D (Fun σ₁ σ₂))
   DApp : ∀ {α₁ α₂}   → AExp Δ (D (Fun α₂ α₁)) → AExp Δ (D α₂) → AExp Δ (D α₁)
 
--- -- index Γ = nesting level of dynamic definitions / dynamic environment
+-- The terms of AExp assign a binding time to each subterm.  When we
+-- interpret subterms with static binding time as statically known
+-- inputs into the program, we can give partial evaluation function
+-- (or specializer) that computes a residual term specialized for the
+-- static inputs. The main complication when defining partial
+-- evaluation as a total, primitively recursive function will be the
+-- treatment of the De Bruijn variables of non-closed residual
+-- expressions. 
+
+module AExp-Examples where
+
+  -- Before diving into the precise definition, it is instructive to
+  -- investigate the expected result of partial evaluation on some
+  -- examples.
+  
+  -- These are some pre-defined variables, to improve readability:
+  x : ∀ {α Δ} → AExp (α ∷ Δ) α
+  x = Var hd
+  y : ∀ {α₁ α Δ} → AExp (α₁ ∷ α ∷ Δ) α
+  y = Var (tl hd)
+  z : ∀ {α₁ α₂ α Δ} → AExp (α₁ ∷ α₂ ∷ α ∷ Δ) α
+  z = Var (tl (tl hd))
+
+  -- A very simple case is the addition of three constants, where one
+  -- is dynamically bound and two are bound statically:
+
+  -- 5D +D (30S +S 7S)
+  -- TODO: continue
+  -- ex1 : AExp [] (D Int)
+  -- ex1 = DAdd (DInt 5) (AAdd (AInt 30) (AInt 7))
+
+  -- Dλ y → let f = λ x → x D+ y in Dλ z → f z
+  term1 : AExp [] (D (Fun Int (Fun Int Int)))
+  term1 = DLam (AApp (ALam (DLam (AApp (ALam y) x)))
+                     ((ALam (DAdd x y))))
+
+-- Dλ y → let f = λ x → (Dλ w → x D+ y) in Dλ z → f z
+-- Dλ y → (λ f → Dλ z → f z) (λ x → (Dλ w → x D+ y))
+  term2 : AExp [] (D (Fun Int (Fun Int Int)))
+  term2 = DLam (AApp (ALam (DLam (AApp (ALam y) x)))
+                     ((ALam (DLam {σ₁ = Int} (DAdd y z)))))
+
+-- The interpretation of annotated types. 
 Imp : Ctx → AType → Set
 Imp Γ (AInt) = ℕ
 Imp Γ (AFun α₁ α₂) = ∀ {Γ'} → Γ ↝ Γ' → (Imp Γ' α₁ → Imp Γ' α₂)
@@ -227,7 +289,7 @@ module SimpleAEnv where
   consD σ env = (cons (D σ) (EVar hd) (liftEnv (↝-extend {τ = σ} ↝-refl) env))
   
   pe : ∀ {α Δ Γ} → AExp Δ α → AEnv Γ Δ → Imp Γ α
-  pe (AVar x) env = lookup env x 
+  pe (Var x) env = lookup env x 
   pe (AInt x) env = x
   pe (AAdd e₁ e₂) env = pe e₁ env + pe e₂ env
   pe (ALam {α} e) env = λ Γ↝Γ' → λ y → pe e (cons α y (liftEnv Γ↝Γ' env)) 
@@ -243,11 +305,11 @@ module Examples where
   open import Relation.Binary.PropositionalEquality
 
   x : ∀ {α Δ} → AExp (α ∷ Δ) α
-  x = AVar hd
+  x = Var hd
   y : ∀ {α₁ α Δ} → AExp (α₁ ∷ α ∷ Δ) α
-  y = AVar (tl hd)
+  y = Var (tl hd)
   z : ∀ {α₁ α₂ α Δ} → AExp (α₁ ∷ α₂ ∷ α ∷ Δ) α
-  z = AVar (tl (tl hd))
+  z = Var (tl (tl hd))
 
 -- Dλ y → let f = λ x → x D+ y in Dλ z → f z
   term1 : AExp [] (D (Fun Int (Fun Int Int)))
@@ -286,7 +348,7 @@ module Correctness where
   strip-lookup (tl x) = tl (strip-lookup x)
 
   strip : ∀ {α Δ} → AExp Δ α → Exp (stripΔ Δ) (stripα α)
-  strip (AVar x) = EVar (strip-lookup x)
+  strip (Var x) = EVar (strip-lookup x)
   strip (AInt x) = EInt x
   strip (AAdd e f) = EAdd (strip e) (strip f)
   strip (ALam e) = ELam (strip e)
@@ -486,7 +548,7 @@ module Correctness where
                  (env' : Env Γ') →
                  Equiv-Env env' aenv env → 
                  Equiv env' (pe e aenv) (ev (strip e) env)
-    pe-correct (AVar x) env' eqenv = lem-equiv-lookup env' eqenv x
+    pe-correct (Var x) env' eqenv = lem-equiv-lookup env' eqenv x
     pe-correct (AInt x) env' eqenv = refl
     pe-correct (AAdd e f) env' eqenv
       rewrite pe-correct e env' eqenv | pe-correct f env' eqenv = refl
@@ -525,7 +587,7 @@ module Correctness where
 --   lookup (cons α₁ Γ↝Γ' v env) (tl x) = lookup (cons α₁ Γ↝Γ' v env) (tl x) 
   
 --   pe : ∀ {α Δ Γ} → AExp Δ α → AEnv Γ Δ → Imp Γ α
---   pe (AVar x) env = lookup env x 
+--   pe (Var x) env = lookup env x 
 --   pe (AInt x) env = x
 --   pe (AAdd e₁ e₂) env = pe e₁ env + pe e₂ env
 --   pe (ALam {α} e) env = λ Γ↝Γ' → λ y → pe e (cons α Γ↝Γ' y env) 
