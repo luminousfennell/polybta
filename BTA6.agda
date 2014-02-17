@@ -12,7 +12,7 @@ open import Relation.Nullary
 
 -- Pointer into a list. It is similar to list membership as defined in
 -- Data.List.AnyMembership, rather than going through propositional
--- equality, it asserts the existance of the referenced element
+-- equality, it asserts the existence of the referenced element
 -- directly.
 module ListReference where 
   infix 4 _∈_
@@ -201,22 +201,26 @@ data AExp (Δ : ACtx) : AType → Set where
   DLam : ∀ {σ₁ σ₂}   → AExp ((D σ₁) ∷ Δ) (D σ₂) → AExp Δ (D (Fun σ₁ σ₂))
   DApp : ∀ {α₁ α₂}   → AExp Δ (D (Fun α₂ α₁)) → AExp Δ (D α₂) → AExp Δ (D α₁)
 
--- The terms of AExp assign a binding time to each subterm.  When we
--- interpret subterms with static binding time as statically known
--- inputs into the program, we can give partial evaluation function
--- (or specializer) that computes a residual term specialized for the
--- static inputs. The main complication when defining partial
--- evaluation as a total, primitively recursive function will be the
--- treatment of the De Bruijn variables of non-closed residual
--- expressions. 
+-- The terms of AExp assign a binding time to each subterm. For
+-- program specialization, we interpret terms with dynamic binding
+-- time as the programs subject to specialization, and their subterms
+-- with static binding time as statically known inputs. A partial
+-- evaluation function (or specializer) then compiles the program into
+-- a residual term for that is specialized for the static inputs. The
+-- main complication when defining partial evaluation as a total,
+-- primitively recursive function will be the treatment of the De
+-- Bruijn variables of non-closed residual expressions.
+
+-- Before diving into the precise definition, it is instructive to
+-- investigate the expected result of partial evaluation on some
+-- examples.
 
 module AExp-Examples where
 
-  -- Before diving into the precise definition, it is instructive to
-  -- investigate the expected result of partial evaluation on some
-  -- examples.
+  open import Data.Product
   
-  -- These are some pre-defined variables, to improve readability:
+  -- (We pre-define some De Bruijn indices to improve
+  -- readability of the examples:)
   x : ∀ {α Δ} → AExp (α ∷ Δ) α
   x = Var hd
   y : ∀ {α₁ α Δ} → AExp (α₁ ∷ α ∷ Δ) α
@@ -226,11 +230,61 @@ module AExp-Examples where
 
   -- A very simple case is the addition of three constants, where one
   -- is dynamically bound and two are bound statically:
-
   -- 5D +D (30S +S 7S)
-  -- TODO: continue
+
   -- ex1 : AExp [] (D Int)
   -- ex1 = DAdd (DInt 5) (AAdd (AInt 30) (AInt 7))
+  -- ex1' : AExp [] (D Int)
+  -- ex1' = AApp (ALam (DAdd (DInt 5) x)) (AApp (ALam (DInt x) (AInt 30) (AInt 7)))
+
+  -- TODO: this example does not work due to the very restrictive type
+  -- off Add/DAdd. We could add a subsumption operator to AExp that
+  -- turns a static expression into a dynamic one and then build a
+  -- smart constructor for addition on top of that
+
+  -- Another simple case is the specialization for a static identity
+  -- function:
+  -- (Sλ x → x) (42D)  ---specializes to--> 42D
+  ex1 : AExp [] (D Int)
+  ex1 = AApp (ALam (Var hd)) (DInt 42)
+
+  ex1-spec : Exp [] Int
+  ex1-spec = EInt 42
+
+  -- The above example can be rewritten as an open AExp term that should be
+  -- closed with a suitable environment. This representation also
+  -- corresponds more directly with the notion of ``static
+  -- inputs'': 
+
+  -- The program ex1' takes an Int→Int function x as input.
+  ex1' : AExp [ AFun (D Int) (D Int) ] (D Int)
+  ex1' = AApp x (DInt 42)
+
+  -- The partial evaluation of ex1' requires an environment to look up
+  -- the static inputs. For now, a single input of type α is just an
+  -- annotated term of type type α:
+  Input : ∀ α → Set
+  Input α = (∃ λ Δ → AExp Δ α)
+  -- (convenience constructor for Inputs)
+  inp : ∀ {α Δ} → AExp Δ α → Input α
+  inp {α} {Δ} e = Δ , e 
+  -- An environment is simply a list of inputs that agrees with a
+  -- given typing context.
+  data AEnv : ACtx → Set where
+    [] : AEnv []
+    _∷_ : ∀ {α Δ} → Input α → AEnv Δ → AEnv (α ∷ Δ)
+
+  -- The environment ex1'-env is able to close ex1'
+  ex1'-env : AEnv [ AFun (D Int) (D Int) ] 
+  ex1'-env = inp (ALam {[]} {D Int} (Var hd)) ∷ []
+  -- TODO: unit test
+  
+  -- The partial evaluation of the closure then should yield the same
+  -- result as in the previous example ex1:
+  ex1'-spec = ex1-spec
+
+  -- The environment defined above is quite weak:
+
 
   -- Dλ y → let f = λ x → x D+ y in Dλ z → f z
   term1 : AExp [] (D (Fun Int (Fun Int Int)))
@@ -299,6 +353,13 @@ module SimpleAEnv where
   pe (DLam {σ} e) env = ELam (pe e (consD σ env))
   pe (DApp e e₁) env = EApp (pe e env) (pe e₁ env)
 
+module CheckExamples where
+  open import Relation.Binary.PropositionalEquality
+  open SimpleAEnv 
+  open AExp-Examples 
+
+  check-ex1 : pe ex1 [] ≡ ex1-spec
+  check-ex1 = refl
 
 module Examples where
   open SimpleAEnv
@@ -570,6 +631,7 @@ module Correctness where
     pe-correct (DApp e f) {env = env} env' eqenv
       with pe-correct f env' eqenv | pe-correct e env' eqenv 
     ... | IA' | IA = cong₂ (λ f x → f x) IA IA'
+
 
 -- module PreciseAEnv where
 --   open Exp-Eval
