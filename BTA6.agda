@@ -1,83 +1,70 @@
--- This version is a little simpler. AEnv is now defined for any Γ.
 module BTA6 where
+
+----------------------------------------------
+-- Preliminaries: Imports and List-utilities
+----------------------------------------------
 
 open import Data.Nat hiding (_<_)
 open import Data.Bool
 open import Function using (_∘_)
 open import Data.List
 
-open import Data.Nat.Properties
 
 open import Relation.Nullary
 
------------------
--- CLEANUP (∈) : this is surely in the standard library
------------------
+-- Pointer into a list. It is similar to list membership as defined in
+-- Data.List.AnyMembership, rather than going through propositional
+-- equality, it asserts the existance of the referenced element
+-- directly.
+module ListReference where 
+  infix 4 _∈_
+  data _∈_ {A : Set} : A → List A → Set where
+    hd : ∀ {x xs} → x ∈ (x ∷ xs)
+    tl : ∀ {x y xs} → x ∈ xs → x ∈ (y ∷ xs)
+open ListReference
 
+-- Extension of lists at the front and, as a generalization, extension
+-- of lists somewhere in the middle. 
+module ListExtension where 
+  open import Relation.Binary.PropositionalEquality
+
+  -- Extension of a list by consing elements at the front. 
+  data _↝_ {A : Set} : List A → List A → Set where
+    ↝-refl   : ∀ {Γ}      → Γ ↝ Γ
+    ↝-extend : ∀ {Γ Γ' τ} → Γ ↝ Γ' → Γ ↝ (τ ∷ Γ')
+  
+  -- Combining two transitive extensions. 
+  ↝-trans : ∀ {A : Set}{Γ Γ' Γ'' : List A} → Γ ↝ Γ' → Γ' ↝ Γ'' → Γ ↝ Γ''
+  ↝-trans Γ↝Γ' ↝-refl = Γ↝Γ'
+  ↝-trans Γ↝Γ' (↝-extend Γ'↝Γ'') = ↝-extend (↝-trans Γ↝Γ' Γ'↝Γ'')
+  
+  -- Of course, ↝-refl is the identity for combining two extensions.
+  lem-↝-refl-id : ∀ {A : Set} {Γ Γ' : List A} → (Γ↝Γ' : Γ ↝ Γ') → Γ↝Γ' ≡ (↝-trans ↝-refl Γ↝Γ')  
+  lem-↝-refl-id ↝-refl = refl
+  lem-↝-refl-id (↝-extend Γ↝Γ') = lem-↝-refl-id (↝-extend Γ↝Γ')
+
+  -- Extending a list in the middle: 
+  data _↝_↝_ {A : Set} : List A → List A → List A → Set where
+    -- First prepend the extension list to the common suffix
+    ↝↝-base   : ∀ {Γ Γ''} → Γ ↝ Γ'' → Γ ↝ [] ↝ Γ'' 
+    -- ... and then add the common prefix
+    ↝↝-extend : ∀ {Γ Γ' Γ'' τ} → Γ ↝ Γ' ↝ Γ'' → (τ ∷ Γ) ↝ (τ ∷ Γ') ↝ (τ ∷ Γ'') 
+open ListExtension
+
+---------------------------------------
+-- Start of the developement:
+---------------------------------------
 
 data Type : Set where
   Int : Type
   Fun : Type → Type → Type
-
+Ctx = List Type
 
 data AType : Set where
     AInt  : AType
     AFun  : AType → AType → AType
     D     : Type → AType
-
 ACtx = List AType
-
-Ctx = List Type
--- More general purpose definitions (should also be in standard library)
--- list membership
-infix 4 _∈_
-data _∈_ {A : Set} : A → List A → Set where
-  hd : ∀ {x xs} → x ∈ (x ∷ xs)
-  tl : ∀ {x y xs} → x ∈ xs → x ∈ (y ∷ xs)
-
------------------------
--- CLEANUP (≤) : these properties are surely in the standard library
------------------------
-open import Relation.Binary 
-
-ℕ-Ord = (DecTotalOrder.preorder decTotalOrder)
-
-≤-refl : ∀ {n} → n ≤ n
-≤-refl = Preorder.reflexive ℕ-Ord _≡_.refl
-
------------------------
--- CLEANUP (≤) : these properties are surely in the standard library
------------------------
-≤-trans : ∀ {a b c} → a ≤ b → b ≤ c → a ≤ c
-≤-trans = Preorder.trans ℕ-Ord
-
------------------------
--- CLEANUP (≤) : these properties are surely in the standard library
------------------------
-
-data _↝_ : Ctx → Ctx → Set where
-  ↝-refl   : ∀ {Γ}      → Γ ↝ Γ
-  ↝-extend : ∀ {Γ Γ' τ} → Γ ↝ Γ' → Γ ↝ (τ ∷ Γ')
-
-↝-≤ : ∀ Γ Γ' → Γ ↝ Γ' → length Γ ≤ length Γ'
-↝-≤ .Γ' Γ' ↝-refl = ≤-refl
-↝-≤ Γ .(τ ∷ Γ') (↝-extend {.Γ} {Γ'} {τ} Γ↝Γ') = ≤-step (↝-≤ Γ Γ' Γ↝Γ')
-
-↝-no-left : ∀ Γ τ → ¬ (τ ∷ Γ) ↝ Γ
-↝-no-left Γ τ p = 1+n≰n (↝-≤ (τ ∷ Γ) Γ p)
-
-↝-trans : ∀ {Γ Γ' Γ''} → Γ ↝ Γ' → Γ' ↝ Γ'' → Γ ↝ Γ''
-↝-trans Γ↝Γ' ↝-refl = Γ↝Γ'
-↝-trans Γ↝Γ' (↝-extend Γ'↝Γ'') = ↝-extend (↝-trans Γ↝Γ' Γ'↝Γ'')
-
-lem : ∀ x y xs xs' → (x ∷ xs) ↝ xs' → xs ↝ (y ∷ xs')
-lem x y xs .(x ∷ xs) ↝-refl = ↝-extend (↝-extend ↝-refl)
-lem x y xs .(x' ∷ xs') (↝-extend {.(x ∷ xs)} {xs'} {x'} p) = ↝-extend (lem x x' xs xs' p)
-
-
-data _↝_↝_ : Ctx → Ctx → Ctx → Set where
-  ↝↝-base   : ∀ {Γ Γ''} → Γ ↝ Γ'' → Γ ↝ [] ↝ Γ''
-  ↝↝-extend : ∀ {Γ Γ' Γ'' τ} → Γ ↝ Γ' ↝ Γ'' → (τ ∷ Γ) ↝ (τ ∷ Γ') ↝ (τ ∷ Γ'')
 
 -- Typed residual expressions
 data Exp (Γ : Ctx) : Type → Set where
@@ -130,7 +117,7 @@ Imp Γ (AFun α₁ α₂) = ∀ {Γ'} → Γ ↝ Γ' → (Imp Γ' α₁ → Imp 
 Imp Γ (D σ) = Exp Γ σ
 
 
-elevate-var : ∀ {Γ Γ' τ} → Γ ↝ Γ' → τ ∈ Γ → τ ∈ Γ'
+elevate-var : ∀ {Γ Γ'} {τ : Type} → Γ ↝ Γ' → τ ∈ Γ → τ ∈ Γ'
 elevate-var ↝-refl x = x
 elevate-var (↝-extend Γ↝Γ') x = tl (elevate-var Γ↝Γ' x)
 
@@ -145,12 +132,6 @@ elevate Γ↝Γ'↝Γ'' (EInt x) = EInt x
 elevate Γ↝Γ'↝Γ'' (EAdd e e₁) = EAdd (elevate Γ↝Γ'↝Γ'' e) (elevate Γ↝Γ'↝Γ'' e₁)
 elevate Γ↝Γ'↝Γ'' (ELam e) = ELam (elevate (↝↝-extend Γ↝Γ'↝Γ'') e)
 elevate Γ↝Γ'↝Γ'' (EApp e e₁) = EApp (elevate Γ↝Γ'↝Γ'' e) (elevate Γ↝Γ'↝Γ'' e₁)
-
--- lift2  : ∀ {Γ Γ' Γ''} α → Γ ↝ Γ' ↝ Γ'' → Imp Γ α → Imp Γ'' α 
--- lift2 α Γ↝Γ'↝Γ'' v = {!!}
--- lift2  AInt p v = v
--- lift2  (AFun x x₁) Γ↝Γ' v = λ Γ'↝Γ'' → v (↝-trans Γ↝Γ' Γ'↝Γ'')
--- lift2  (D x₁) Γ↝Γ' v = elevate (↝↝-base Γ↝Γ') v
 
 lift : ∀ {Γ Γ'} α → Γ ↝ Γ' → Imp Γ α → Imp Γ' α 
 lift AInt p v = v
@@ -270,18 +251,13 @@ module Correctness where
                  (v : EImp τ) → (Γ↝Γ' ⊢  env ↝ env')  →
                  ↝-extend Γ↝Γ' ⊢ env ↝ (v ∷ env')
 
-    lem-trans-refl-id : ∀ {Γ Γ'} → (Γ↝Γ' : Γ ↝ Γ') → Γ↝Γ' ≡ (↝-trans ↝-refl Γ↝Γ')  
-    lem-trans-refl-id ↝-refl = refl
-    lem-trans-refl-id (↝-extend Γ↝Γ') = lem-trans-refl-id (↝-extend Γ↝Γ')
-
-
     env↝trans : ∀ {Γ Γ' Γ''} {Γ↝Γ' : Γ ↝ Γ'} {Γ'↝Γ'' : Γ' ↝ Γ''}
                   {env env' env''} → 
                   Γ↝Γ' ⊢ env ↝ env' → Γ'↝Γ'' ⊢ env' ↝ env'' →
                   let Γ↝Γ'' = ↝-trans Γ↝Γ' Γ'↝Γ'' in
                   Γ↝Γ'' ⊢ env ↝ env'' 
     env↝trans {.Γ'} {Γ'} {Γ''} {.↝-refl} {Γ'↝Γ''} {.env'} {env'} (refl .env') env'↝env''
-      rewrite sym (lem-trans-refl-id  Γ'↝Γ'') = env'↝env''
+      rewrite sym (lem-↝-refl-id  Γ'↝Γ'') = env'↝env'' 
     env↝trans (extend v env↝env') env'↝env'' =
       env↝trans (extend v env↝env') env'↝env''
 
@@ -382,7 +358,7 @@ module Correctness where
                    Γ↝Γ' ⊢ env ↝ env' →
                    {av' : Imp Γ' α} {v' : EImp (stripα α)} → 
                    Equiv env' av' v' → Equiv env' (va (↝-trans ↝-refl Γ↝Γ') av') (v v')
-            body {Γ↝Γ' = Γ↝Γ'} env↝env' eq' rewrite sym (lem-trans-refl-id Γ↝Γ') = eq env↝env' eq'
+            body {Γ↝Γ' = Γ↝Γ'} env↝env' eq' rewrite sym (lem-↝-refl-id Γ↝Γ') = eq env↝env' eq' 
     lem-lift-refl-id {D x} env v e eq rewrite sym eq = sym (lem-elevate-≡ (refl (refl env)) e) 
 
     
@@ -394,7 +370,7 @@ module Correctness where
                      Γ↝Γ' ⊢ env ↝ env' → 
                      Equiv env va v →
                      Equiv env' (lift α Γ↝Γ' va) v
-    lem-lift-equiv va v {.env'} {env'} (refl .env') eq = lem-lift-refl-id env' v va eq -- lem-lift-equiv {!!} {!!} {!!} {!!}
+    lem-lift-equiv va v {.env'} {env'} (refl .env') eq = lem-lift-refl-id env' v va eq 
     lem-lift-equiv {AInt} va v (extend v₁ env↝env') eq = eq
     lem-lift-equiv {AFun α α₁} va v (extend v₁ env↝env') eq =
       λ v₁env₁↝env' eq₁ → eq (env↝trans (extend v₁ env↝env') v₁env₁↝env') eq₁
