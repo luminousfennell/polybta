@@ -8,8 +8,6 @@ open import Data.Nat hiding (_<_)
 open import Data.Bool
 open import Function using (_∘_)
 open import Data.List
-
-
 open import Relation.Nullary
 
 -- Pointer into a list. It is similar to list membership as defined in
@@ -39,7 +37,9 @@ module ListExtension where
   ↝-trans Γ↝Γ' (↝-extend Γ'↝Γ'') = ↝-extend (↝-trans Γ↝Γ' Γ'↝Γ'')
   
   -- Of course, ↝-refl is the identity for combining two extensions.
-  lem-↝-refl-id : ∀ {A : Set} {Γ Γ' : List A} → (Γ↝Γ' : Γ ↝ Γ') → Γ↝Γ' ≡ (↝-trans ↝-refl Γ↝Γ')  
+  lem-↝-refl-id : ∀ {A : Set} {Γ Γ' : List A} →
+                    (Γ↝Γ' : Γ ↝ Γ') →
+                    Γ↝Γ' ≡ (↝-trans ↝-refl Γ↝Γ')  
   lem-↝-refl-id ↝-refl = refl
   lem-↝-refl-id (↝-extend Γ↝Γ') = lem-↝-refl-id (↝-extend Γ↝Γ')
 
@@ -48,23 +48,20 @@ module ListExtension where
     -- First prepend the extension list to the common suffix
     ↝↝-base   : ∀ {Γ Γ''} → Γ ↝ Γ'' → Γ ↝ [] ↝ Γ'' 
     -- ... and then add the common prefix
-    ↝↝-extend : ∀ {Γ Γ' Γ'' τ} → Γ ↝ Γ' ↝ Γ'' → (τ ∷ Γ) ↝ (τ ∷ Γ') ↝ (τ ∷ Γ'') 
+    ↝↝-extend : ∀ {Γ Γ' Γ'' τ} →
+                 Γ ↝ Γ' ↝ Γ'' → (τ ∷ Γ) ↝ (τ ∷ Γ') ↝ (τ ∷ Γ'') 
 open ListExtension
 
 ---------------------------------------
 -- Start of the developement:
 ---------------------------------------
 
+-- The residual language: a standard simply typed λ-calculus.
+-- The types are integers and functions.
 data Type : Set where
   Int : Type
   Fun : Type → Type → Type
 Ctx = List Type
-
-data AType : Set where
-    AInt  : AType
-    AFun  : AType → AType → AType
-    D     : Type → AType
-ACtx = List AType
 
 -- Typed residual expressions
 data Exp (Γ : Ctx) : Type → Set where
@@ -74,6 +71,7 @@ data Exp (Γ : Ctx) : Type → Set where
   ELam : ∀ {τ τ'} → Exp (τ ∷ Γ) τ' → Exp Γ (Fun τ τ')
   EApp : ∀ {τ τ'} → Exp Γ (Fun τ τ')  → Exp Γ τ → Exp Γ τ'
 
+-- The standard functional semantics of the residual expressions. 
 module Exp-Eval where
   -- interpretation of Exp types
   EImp : Type → Set
@@ -98,7 +96,80 @@ module Exp-Eval where
   ev (EApp e f) env = ev e env (ev f env)
 
 
+-- The binding-time-annotated language. 
 
+-- The type of a term determines the term's binding time. The type
+-- constructors with an A-prefix denote statically bound integers and
+-- functions. Terms with dynamic binding time have a `D' type. The `D'
+-- type constructor simply wraps up a residual type.
+data AType : Set where
+    AInt  : AType
+    AFun  : AType → AType → AType
+    D     : Type → AType
+ACtx = List AType
+
+-- The mapping from annotated types to residual types is straightforward.
+typeof : AType → Type
+typeof AInt = Int
+typeof (AFun α₁ α₂) = Fun (typeof α₁) (typeof α₂)
+typeof (D x) = x
+
+-- ATypes are stratified such that that dynamically bound
+-- functions can only have dynamically bound parameters.
+
+-- TODO: why exactly is that necessary?
+
+-- The following well-formedness relation as an alternative representation
+-- for this constraint:
+module AType-WF where
+  open import Relation.Binary.PropositionalEquality
+  -- Static and dynamic binding times
+  data BT : Set where
+    stat : BT
+    dyn : BT
+
+  -- Ordering on binding times: dynamic binding time subsumes static
+  -- binding time.
+  data _≤-bt_ : BT → BT → Set where
+    bt≤bt : ∀ bt → bt ≤-bt bt
+    stat≤bt : ∀ bt → stat ≤-bt bt
+
+  module WF (ATy : Set) (typeof : ATy → Type) (btof : ATy → BT) where
+    data wf : ATy → Set where
+      wf-int : ∀ α → typeof α ≡ Int → wf α
+      wf-fun : ∀ α α₁ α₂ →
+               typeof α ≡ Fun (typeof α₁) (typeof α₂) → 
+               btof α ≤-bt btof α₁ →
+               btof α ≤-bt btof α₂ →
+               wf α₁ → wf α₂ →
+               wf α
+
+  -- It is easy to check that the stratification respects the
+  -- well-formedness, given the intended mapping from ATypes to
+  -- binding times expained above:
+  btof : AType → BT
+  btof AInt = stat
+  btof (AFun _ _) = stat
+  btof (D x) = dyn
+
+  open WF AType typeof btof using (wf-fun; wf-int) renaming (wf to wf-AType)
+  lem-wf-AType : ∀ α → wf-AType α
+  lem-wf-AType AInt = WF.wf-int AInt refl
+  lem-wf-AType (AFun α α₁) = WF.wf-fun (AFun α α₁) α α₁ refl (stat≤bt (btof α))
+                             (stat≤bt (btof α₁))
+                             (lem-wf-AType α)
+                             (lem-wf-AType α₁)
+  lem-wf-AType (D Int) = WF.wf-int (D Int) refl
+  lem-wf-AType (D (Fun x x₁)) = WF.wf-fun (D (Fun x x₁))
+                                          (D x) (D x₁)
+                                          refl (bt≤bt dyn) (bt≤bt dyn)
+                                          (lem-wf-AType (D x))
+                                          (lem-wf-AType (D x₁))
+             
+    
+
+
+-- 
 data AExp (Δ : ACtx) : AType → Set where
   AVar : ∀ {α} → α ∈ Δ → AExp Δ α
   AInt : ℕ → AExp Δ AInt
@@ -204,11 +275,8 @@ module Correctness where
   open SimpleAEnv
   open Exp-Eval
 
-  -- 1-1 mapping from AExp into Exp 
-  stripα : AType → Type
-  stripα AInt = Int
-  stripα (AFun α₁ α₂) = Fun (stripα α₁) (stripα α₂)
-  stripα (D x) = x
+  -- TODO: rename occurences of stripα to typeof
+  stripα = typeof
 
   stripΔ : ACtx → Ctx
   stripΔ = map stripα
