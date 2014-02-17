@@ -251,18 +251,19 @@ module AExp-Examples where
   ex1-spec : Exp [] Int
   ex1-spec = EInt 42
 
-  -- The above example can be rewritten as an open AExp term that should be
-  -- closed with a suitable environment. This representation also
-  -- corresponds more directly with the notion of ``static
-  -- inputs'': 
+  -- The above example can be rewritten as an open AExp term that
+  -- should be closed with a suitable environment. This representation
+  -- does not only corresponds more directly with the notion of
+  -- ``static inputs'', it also illustrates a typical situation when
+  -- specializing the body of a lambda abstraction:
 
-  -- The program ex1' takes an Int→Int function x as input.
+  -- The program ex1' takes an Int→Int function x as a static input.
   ex1' : AExp [ AFun (D Int) (D Int) ] (D Int)
   ex1' = AApp x (DInt 42)
 
   -- The partial evaluation of ex1' requires an environment to look up
-  -- the static inputs. For now, a single input of type α is just an
-  -- annotated term of type type α:
+  -- the static input. As a first approximation, a single input of
+  -- type α is just some annotated term of type type α:
   Input : ∀ α → Set
   Input α = (∃ λ Δ → AExp Δ α)
   -- (convenience constructor for Inputs)
@@ -274,16 +275,57 @@ module AExp-Examples where
     [] : AEnv []
     _∷_ : ∀ {α Δ} → Input α → AEnv Δ → AEnv (α ∷ Δ)
 
-  -- The environment ex1'-env is able to close ex1'
+  lookup : ∀ {α Δ} → AEnv Δ → α ∈ Δ → Input α 
+  lookup (x ∷ env) hd = x
+  lookup (_ ∷ env) (tl x) = lookup env x
+
+  -- Thus, an environment like ex1'-env should be able to close ex1'
+  -- and a partial evaluation of the closure should yield the same
+  -- result as in example ex1:
   ex1'-env : AEnv [ AFun (D Int) (D Int) ] 
   ex1'-env = inp (ALam {[]} {D Int} (Var hd)) ∷ []
   -- TODO: unit test
-  
-  -- The partial evaluation of the closure then should yield the same
-  -- result as in the previous example ex1:
   ex1'-spec = ex1-spec
 
-  -- The environment defined above is quite weak:
+  -- (some definitions for the example)
+  open import Data.Maybe
+  _=<<_ : ∀ {A B : Set} → (A → Maybe B) → Maybe A → Maybe B
+  f =<< mx = maybe′ f nothing mx
+  liftM2 : ∀ {A B C : Set} → (A → B → Maybe C) → Maybe A → Maybe B → Maybe C
+  liftM2 f mx my = (λ x → (λ y → f x y) =<< my) =<< mx
+
+  -- The partial function ex1'-pe demonstrates the desired calculation
+  -- for the specific case of ex1':
+  ex1'-pe : ∀ {Δ} → AEnv Δ → AExp Δ (D Int) → Maybe (Exp [] Int)
+  ex1'-pe {Δ} env (AApp ef ei)
+    = liftM2 fromApp 
+             (fromInput =<< fromVar ef)
+             (fromInt ei)
+
+    where fromInput : ∀ {α} → Input α → Maybe (Exp [] Int → Exp [] Int)
+          fromInput (_ , ALam {D Int} (Var hd)) = just (λ x → x) 
+          fromInput _ = nothing
+          fromVar : ∀ {α} → AExp Δ α → Maybe (Input α)
+          fromVar (Var x) = just (lookup env x)
+          fromVar _ = nothing
+          fromApp : (Exp [] Int → Exp [] Int) → Exp [] Int → Maybe (Exp [] Int)
+          fromApp f x = just (f x)
+          fromInt : ∀ {α} → AExp Δ α → Maybe (Exp [] Int)
+          fromInt (DInt i) = just (EInt {[]} i)
+          fromInt _ = nothing
+  ex1'-pe _ _ = nothing
+
+  open import Relation.Binary.PropositionalEquality
+  check-ex1'-pe : ex1'-pe ex1'-env ex1' ≡ just (ex1'-spec)
+  check-ex1'-pe = refl
+
+
+  -- The example above shows several problems for a total
+  -- generalization to arbitrary term with the current datastructures:
+  --  - the argument to fromApp is not primitive recursive
+  --  - the result type of fromInput generates the context of the returned expression
+  --    ``out of thin air''
+  -- TODO: continue
 
 
   -- Dλ y → let f = λ x → x D+ y in Dλ z → f z
