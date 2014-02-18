@@ -41,7 +41,10 @@ module ListExtension where
                     (Γ↝Γ' : Γ ↝ Γ') →
                     Γ↝Γ' ≡ (↝-trans ↝-refl Γ↝Γ')  
   lem-↝-refl-id ↝-refl = refl
-  lem-↝-refl-id (↝-extend Γ↝Γ') = lem-↝-refl-id (↝-extend Γ↝Γ')
+  lem-↝-refl-id (↝-extend Γ↝Γ') =
+    cong ↝-extend (lem-↝-refl-id Γ↝Γ')
+  -- TODO: why does this work?
+  -- lem-↝-refl-id (↝-extend Γ↝Γ') = lem-↝-refl-id (↝-extend Γ↝Γ')
 
   -- Extending a list in the middle: 
   data _↝_↝_ {A : Set} : List A → List A → List A → Set where
@@ -486,13 +489,17 @@ module Correctness where
 
     env↝trans : ∀ {Γ Γ' Γ''} {Γ↝Γ' : Γ ↝ Γ'} {Γ'↝Γ'' : Γ' ↝ Γ''}
                   {env env' env''} → 
-                  Γ↝Γ' ⊢ env ↝ env' → Γ'↝Γ'' ⊢ env' ↝ env'' →
+                  Γ↝Γ' ⊢ env ↝ env' →
+                  Γ'↝Γ'' ⊢ env' ↝ env'' →
                   let Γ↝Γ'' = ↝-trans Γ↝Γ' Γ'↝Γ'' in
                   Γ↝Γ'' ⊢ env ↝ env'' 
+    -- env↝trans {Γ} {.Γ''} {Γ''} {Γ↝Γ'} {.↝-refl} {env} {.env''} {env''} env↝env' (refl .env'') = env↝env'
+    -- env↝trans env↝env' (extend v env'↝env'') = extend v (env↝trans env↝env' env'↝env'')
+
+    -- TODO: why does this work???
     env↝trans {.Γ'} {Γ'} {Γ''} {.↝-refl} {Γ'↝Γ''} {.env'} {env'} (refl .env') env'↝env''
       rewrite sym (lem-↝-refl-id  Γ'↝Γ'') = env'↝env'' 
-    env↝trans (extend v env↝env') env'↝env'' =
-      env↝trans (extend v env↝env') env'↝env''
+    env↝trans (extend v env↝env') env'↝env'' = env↝trans (extend v env↝env') env'↝env''
 
     -- Equivalent Imp Γ α and EImp τ values (where τ = stripα α). As
     -- (v : Imp Γ α) is not necessarily closed, equivalence is defined for
