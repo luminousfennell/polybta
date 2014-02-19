@@ -506,10 +506,10 @@ module Correctness where
     -- the closure (Env Γ, ImpΓ α)
     Equiv : ∀ {α Γ} → Env Γ → Imp Γ α → EImp (stripα α) → Set 
     Equiv {AInt} env av v = av ≡ v
-    Equiv {AFun α₁ α₂} {Γ} env av v = -- extensional equality, given -- an extended context
+    Equiv {AFun α₁ α₂} {Γ} env af f = -- extensional equality, given -- an extended context
         ∀ {Γ' env' Γ↝Γ'} → (Γ↝Γ' ⊢ env ↝ env') →
-        {av' : Imp Γ' α₁} → {v' : EImp (stripα α₁)} →
-        Equiv env' av' v' → Equiv env' (av Γ↝Γ' av') (v v')
+        {ax : Imp Γ' α₁} → {x : EImp (stripα α₁)} →
+        Equiv env' ax x → Equiv env' (af Γ↝Γ' ax) (f x)
     Equiv {D x} {Γ} env av v = ev av env ≡ v -- actually we mean extensional equality
 
     -- Equivalence of AEnv and Env environments. They need to provide
