@@ -9,6 +9,8 @@ open import Data.Bool
 open import Function using (_∘_)
 open import Data.List
 open import Relation.Nullary
+open import Relation.Binary.PropositionalEquality
+open import Category.Functor
 
 -- Pointer into a list. It is similar to list membership as defined in
 -- Data.List.AnyMembership, rather than going through propositional
@@ -20,6 +22,11 @@ module ListReference where
     hd : ∀ {x xs} → x ∈ (x ∷ xs)
     tl : ∀ {x y xs} → x ∈ xs → x ∈ (y ∷ xs)
 open ListReference
+
+mapIdx : {A B : Set} → (f : A → B) →
+         {x : A} {xs : List A} → x ∈ xs → f x ∈ map f xs
+mapIdx f hd = hd
+mapIdx f (tl x₁) = tl (mapIdx f x₁)
 
 -- Extension of lists at the front and, as a generalization, extension
 -- of lists somewhere in the middle.
@@ -201,8 +208,9 @@ data AExp (Δ : ACtx) : AType → Set where
   AApp : ∀ {α₁ α₂}   → AExp Δ (AFun α₂ α₁) → AExp Δ α₂ → AExp Δ α₁
   DInt : ℕ → AExp Δ (D Int)
   DAdd : AExp Δ (D Int) → AExp Δ (D Int) → AExp Δ (D Int)
-  DLam : ∀ {σ₁ σ₂}   → AExp ((D σ₁) ∷ Δ) (D σ₂) → AExp Δ (D (Fun σ₁ σ₂))
-  DApp : ∀ {α₁ α₂}   → AExp Δ (D (Fun α₂ α₁)) → AExp Δ (D α₂) → AExp Δ (D α₁)
+  DLam : ∀ {σ₁ σ₂} → AExp ((D σ₁) ∷ Δ) (D σ₂) → AExp Δ (D (Fun σ₁ σ₂))
+  DApp : ∀ {α₁ α₂} → AExp Δ (D (Fun α₂ α₁)) → AExp Δ (D α₂) → AExp Δ (D α₁)
+  Lift : AExp Δ AInt → AExp Δ (D Int)
 
 -- The terms of AExp assign a binding time to each subterm. For
 -- program specialization, we interpret terms with dynamic binding
@@ -218,129 +226,123 @@ data AExp (Δ : ACtx) : AType → Set where
 -- investigate the expected result of partial evaluation on some
 -- examples.
 
+module ApplicativeMaybe where
+  open import Data.Maybe public
+  open import Category.Functor public
+  import Level
+  open RawFunctor {Level.zero} functor public
+
+  infixl 4 _⊛_
+  _⊛_ : {A B : Set} → Maybe (A → B) → Maybe A → Maybe B
+  just f ⊛ just x = just (f x)
+  _ ⊛ _           = nothing
+
+
+  liftA2 : {A B C : Set} → (A → B → C) → Maybe A → Maybe B → Maybe C 
+  liftA2 f mx my = just f ⊛ mx ⊛ my
+
 module AExp-Examples where
 
-  open import Data.Product
+  open import Data.Product hiding (map)
+  open ApplicativeMaybe
+  open import Data.Empty
+  open Relation.Binary.PropositionalEquality
   
   -- (We pre-define some De Bruijn indices to improve
   -- readability of the examples:)
   x : ∀ {α Δ} → AExp (α ∷ Δ) α
   x = Var hd
+  x' : ∀ {α Δ} → Exp (α ∷ Δ) α
+  x' = EVar hd
   y : ∀ {α₁ α Δ} → AExp (α₁ ∷ α ∷ Δ) α
   y = Var (tl hd)
   z : ∀ {α₁ α₂ α Δ} → AExp (α₁ ∷ α₂ ∷ α ∷ Δ) α
   z = Var (tl (tl hd))
 
-  -- A very simple case is the addition of three constants, where one
-  -- is dynamically bound and two are bound statically:
-  -- 5D +D (30S +S 7S)
+  -- A rather trivial case is the specialization of base-type
+  -- calulations. Here, we simply want to emit the result of a static
+  -- addition as a constant:
 
-  -- ex1 : AExp [] (D Int)
-  -- ex1 = DAdd (DInt 5) (AAdd (AInt 30) (AInt 7))
-  -- ex1' : AExp [] (D Int)
-  -- ex1' = AApp (ALam (DAdd (DInt 5) x)) (AApp (ALam (DInt x) (AInt 30) (AInt 7)))
+  -- Lift (5S +S 5S) --specializes to --> 5E
+  ex0 : AExp [] (D Int)
+  ex0 = (Lift (AAdd (AInt 5) (AInt 5)))
 
-  -- TODO: this example does not work due to the very restrictive type
-  -- off Add/DAdd. We could add a subsumption operator to AExp that
-  -- turns a static expression into a dynamic one and then build a
-  -- smart constructor for addition on top of that
+  ex0' : AExp [] (D Int)
+  ex0' = DAdd (DInt 6) (Lift (AAdd (AInt 5) (AInt 5)))
 
-  -- Another simple case is the specialization for a static identity
-  -- function:
-  -- (Sλ x → x) (42D)  ---specializes to--> 42D
-  ex1 : AExp [] (D Int)
-  ex1 = AApp (ALam (Var hd)) (DInt 42)
+  ex0-spec : Exp [] Int
+  ex0-spec = (EInt 10)
 
-  ex1-spec : Exp [] Int
-  ex1-spec = EInt 42
+  ex0'-spec : Exp [] Int
+  ex0'-spec = (EAdd (EInt 6) (EInt 10))
 
-  -- The above example can be rewritten as an open AExp term that
-  -- should be closed with a suitable environment. This representation
-  -- does not only corresponds more directly with the notion of
-  -- ``static inputs'', it also illustrates a typical situation when
-  -- specializing the body of a lambda abstraction:
+  -- The partial evaluation for this case is of course
+  -- straightforward. We use Agda's ℕ as an implementation type for
+  -- static integers and residual expressions Exp for dynamic ones.
+  Imp0 : AType → Set
+  Imp0 AInt = ℕ
+  Imp0 (D σ) = Exp [] σ
+  Imp0 _ = ⊥ 
 
-  -- The program ex1' takes an Int→Int function x as a static input.
-  ex1' : AExp [ AFun (D Int) (D Int) ] (D Int)
-  ex1' = AApp x (DInt 42)
+  pe-ex0 : ∀ { α } → AExp [] α → Maybe (Imp0 α)
+  pe-ex0 (AInt x) = just (x)
+  pe-ex0 (DInt x) = just (EInt x)
+  pe-ex0 (AAdd e f) = liftA2 _+_  (pe-ex0 e) (pe-ex0 f) 
+  pe-ex0 (DAdd e f) = liftA2 EAdd (pe-ex0 e) (pe-ex0 f) 
+  pe-ex0 (Lift e) = EInt <$> (pe-ex0 e)
+  pe-ex0 _ = nothing
 
-  -- The partial evaluation of ex1' requires an environment to look up
-  -- the static input. As a first approximation, a single input of
-  -- type α is just some annotated term of type type α:
-  Input : ∀ α → Set
-  Input α = (∃ λ Δ → AExp Δ α)
-  -- (convenience constructor for Inputs)
-  inp : ∀ {α Δ} → AExp Δ α → Input α
-  inp {α} {Δ} e = Δ , e 
-  -- An environment is simply a list of inputs that agrees with a
-  -- given typing context.
-  data AEnv : ACtx → Set where
-    [] : AEnv []
-    _∷_ : ∀ {α Δ} → Input α → AEnv Δ → AEnv (α ∷ Δ)
+  ex0-test : pe-ex0 ex0 ≡ just ex0-spec
+  ex0-test = refl
 
-  lookup : ∀ {α Δ} → AEnv Δ → α ∈ Δ → Input α 
-  lookup (x ∷ env) hd = x
-  lookup (_ ∷ env) (tl x) = lookup env x
+  ex0'-test : pe-ex0 ex0' ≡ just ex0'-spec
+  ex0'-test = refl
 
-  -- Thus, an environment like ex1'-env should be able to close ex1'
-  -- and a partial evaluation of the closure should yield the same
-  -- result as in example ex1:
-  ex1'-env : AEnv [ AFun (D Int) (D Int) ] 
-  ex1'-env = inp (ALam {[]} {D Int} (Var hd)) ∷ []
-  -- TODO: unit test
-  ex1'-spec = ex1-spec
+  -- Specializing open terms is also straightforward. This situation
+  -- typically arises when specializing the body of a lambda
+  -- abstraction.
+  -- (Dλ x → x +D Lift (5S + 5S)) ---specializes to--> Eλ x → EInt 10
+  ex1 : AExp [] (D (Fun Int Int))
+  ex1 = (DLam (DAdd x (Lift (AAdd (AInt 5) (AInt 5)))))
 
-  -- (some definitions for the example)
-  open import Data.Maybe
-  _=<<_ : ∀ {A B : Set} → (A → Maybe B) → Maybe A → Maybe B
-  f =<< mx = maybe′ f nothing mx
-  liftM2 : ∀ {A B C : Set} → (A → B → Maybe C) → Maybe A → Maybe B → Maybe C
-  liftM2 f mx my = (λ x → (λ y → f x y) =<< my) =<< mx
+  ex1-spec : Exp [] (Fun Int Int)
+  ex1-spec = ELam (EAdd x' (EInt 10))
 
-  -- The partial function ex1'-pe demonstrates the desired calculation
-  -- for the specific case of ex1':
-  ex1'-pe : ∀ {Δ} → AEnv Δ → AExp Δ (D Int) → Maybe (Exp [] Int)
-  ex1'-pe {Δ} env (AApp ef ei)
-    = liftM2 fromApp 
-             (fromInput =<< fromVar ef)
-             (fromInt ei)
+  ex1' : AExp (D Int ∷ []) (D Int) 
+  ex1' = (Lift (AAdd (AInt 5) (AInt 5)))
 
-    where fromInput : ∀ {α} → Input α → Maybe (Exp [] Int → Exp [] Int)
-          fromInput (_ , ALam {D Int} (Var hd)) = just (λ x → x) 
-          fromInput _ = nothing
-          fromVar : ∀ {α} → AExp Δ α → Maybe (Input α)
-          fromVar (Var x) = just (lookup env x)
-          fromVar _ = nothing
-          fromApp : (Exp [] Int → Exp [] Int) → Exp [] Int → Maybe (Exp [] Int)
-          fromApp f x = just (f x)
-          fromInt : ∀ {α} → AExp Δ α → Maybe (Exp [] Int)
-          fromInt (DInt i) = just (EInt {[]} i)
-          fromInt _ = nothing
-  ex1'-pe _ _ = nothing
+  ex1'-spec : Exp (Int ∷ []) Int 
+  ex1'-spec = (EAdd x' (EInt 10))
 
-  open import Relation.Binary.PropositionalEquality
-  check-ex1'-pe : ex1'-pe ex1'-env ex1' ≡ just (ex1'-spec)
-  check-ex1'-pe = refl
+  -- The implementation type now also has to hold open residual terms,
+  -- which arise as the result of partially evaluating an open term
+  -- with with dynamic binding time. The calculation of the
+  -- implementation type thus requires a typing context as a
+  -- parameter.
+  Imp1 : Ctx → AType → Set
+  Imp1 _ AInt = ℕ
+  Imp1 Γ (D τ) = Exp Γ τ
+  Imp1 _ _ = ⊥
 
+  erase = typeof
 
-  -- The example above shows several problems for a total
-  -- generalization to arbitrary term with the current datastructures:
-  --  - the argument to fromApp is not primitive recursive
-  --  - the result type of fromInput generates the context of the returned expression
-  --    ``out of thin air''
-  -- TODO: continue
+  -- Unsurprisingly, Partial evaluation of open terms emits
+  -- implementations that are typed under the erased context.
+  pe-ex1 : ∀ {α Δ} → AExp Δ α → Maybe (Imp1 (map erase Δ) α)
+  pe-ex1 (AInt x) = just (x)
+  pe-ex1 (DInt x) = just (EInt x)
+  pe-ex1 (AAdd e f) = liftA2 _+_  (pe-ex1 e) (pe-ex1 f) 
+  pe-ex1 (DAdd e f) = liftA2 EAdd (pe-ex1 e) (pe-ex1 f) 
+  pe-ex1 (Lift e) = EInt <$> (pe-ex1 e)
+  pe-ex1 (DLam {τ} e) = ELam  <$> pe-ex1 e
+  -- Technical note: In the case for variables we can simply exploit
+  -- the fact that variables are functorial in the actual type of
+  -- their contexts' elements
+  pe-ex1 (Var {D _} x) = just (EVar (mapIdx typeof x))
+  pe-ex1 _ = nothing
 
-
-  -- Dλ y → let f = λ x → x D+ y in Dλ z → f z
-  term1 : AExp [] (D (Fun Int (Fun Int Int)))
-  term1 = DLam (AApp (ALam (DLam (AApp (ALam y) x)))
-                     ((ALam (DAdd x y))))
-
--- Dλ y → let f = λ x → (Dλ w → x D+ y) in Dλ z → f z
--- Dλ y → (λ f → Dλ z → f z) (λ x → (Dλ w → x D+ y))
-  term2 : AExp [] (D (Fun Int (Fun Int Int)))
-  term2 = DLam (AApp (ALam (DLam (AApp (ALam y) x)))
-                     ((ALam (DLam {σ₁ = Int} (DAdd y z)))))
+  ex1-test : pe-ex1 ex1 ≡ just ex1-spec
+  ex1-test = refl
 
 -- The interpretation of annotated types. 
 Imp : Ctx → AType → Set
@@ -397,15 +399,21 @@ module SimpleAEnv where
   pe (DAdd e e₁) env = EAdd (pe e env) (pe e₁ env)
   pe (DLam {σ} e) env = ELam (pe e (consD σ env))
   pe (DApp e e₁) env = EApp (pe e env) (pe e₁ env)
+  pe (Lift e) env = EInt (pe e env) 
 
 module CheckExamples where
-  open import Relation.Binary.PropositionalEquality
+  open import Relation.Binary.PropositionalEquality hiding ([_])
   open SimpleAEnv 
   open AExp-Examples 
 
   check-ex1 : pe ex1 [] ≡ ex1-spec
   check-ex1 = refl
 
+  check-ex0 : pe ex0 [] ≡ ex0-spec
+  check-ex0 = refl
+
+  check-ex0' : pe ex0' [] ≡ ex0'-spec
+  check-ex0' = refl
 module Examples where
   open SimpleAEnv
   open import Relation.Binary.PropositionalEquality
@@ -463,6 +471,7 @@ module Correctness where
   strip (DAdd e f) = EAdd (strip e) (strip f)
   strip (DLam e) = ELam (strip e)
   strip (DApp e f) = EApp (strip e) (strip f)
+  strip (Lift e) = strip e
 
   liftE : ∀ {τ Γ Γ'} → Γ ↝ Γ' → Exp Γ τ → Exp Γ' τ
   liftE Γ↝Γ' e = elevate (↝↝-base Γ↝Γ') e
@@ -680,6 +689,9 @@ module Correctness where
     pe-correct (DApp e f) {env = env} env' eqenv
       with pe-correct f env' eqenv | pe-correct e env' eqenv 
     ... | IA' | IA = cong₂ (λ f x → f x) IA IA'
+    pe-correct (Lift e) env' eqenv
+      with pe-correct e env' eqenv
+    ... | IA = IA
 
 
 -- module PreciseAEnv where
