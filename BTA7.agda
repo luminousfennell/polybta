@@ -1,4 +1,4 @@
-module BTA6 where
+module BTA7 where
 
 ----------------------------------------------
 -- Preliminaries: Imports and List-utilities
