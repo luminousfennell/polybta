@@ -344,6 +344,18 @@ module AExp-Examples where
   ex1-test : pe-ex1 ex1 ≡ just ex1-spec
   ex1-test = refl
 
+  data Static : AType → Set where
+    SInt : Static AInt
+    SFun : ∀ { α₁ α₂ } → Static α₂ → Static (AFun α₁ α₂)
+
+  is-static : (α : AType) → Dec (Static α)
+  is-static α = {!!}
+
+  Imp2 : Ctx → AType → Set
+  Imp2 _ AInt = ℕ
+  Imp2 Γ (D τ) = Exp Γ τ
+  Imp2 Γ (AFun α₁ α₂) =   Imp2 Γ α₁ → Imp2 Γ α₂
+
 -- The interpretation of annotated types. 
 Imp : Ctx → AType → Set
 Imp Γ (AInt) = ℕ
