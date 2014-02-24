@@ -5,6 +5,7 @@ open import Relation.Binary.PropositionalEquality
 data _∧_ (A : Set) (B : Set) : Set where
   ∧-intro : A → B → (A ∧ B)
 
+
 --------------------------------
 -- Extension with Pairs and Sums
 --------------------------------
