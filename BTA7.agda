@@ -169,27 +169,60 @@ data AExp (Δ : ACtx) : AType → Set where
   DSnd  : ∀ {σ₁ σ₂} → AExp Δ (D (σ₁ • σ₂)) → AExp Δ (D σ₂)
   DCase : ∀ {σ₁ σ₂ σ₃} → AExp Δ (D (σ₁ ⊎ σ₂)) → AExp ((D σ₁) ∷ Δ) (D σ₃) → AExp ((D σ₂) ∷ Δ) (D σ₃) → AExp Δ (D σ₃)
 
--- The terms of AExp assign a binding time to each subterm. For
--- program specialization, we interpret terms with dynamic binding
--- time as the programs subject to specialization, and their subterms
--- with static binding time as statically known inputs. A partial
--- evaluation function (or specializer) then compiles the program into
--- a residual term for that is specialized for the static inputs. The
--- main complication when defining partial evaluation as a total,
--- primitively recursive function will be the treatment of the De
--- Bruijn variables of non-closed residual expressions.
 
 
 
--- The interpretation of annotated types. 
+  ------------------------------------------------------------------------------------------------
+  -- Now the typed annotated terms are extended to inculde dynamic terms whose subterms are static 
+  ------------------------------------------------------------------------------------------------
+  ---------------  
+  --Some examples
+  ---------------
+  --a. first-order static value in a dynamic environment
+  -- DAdd (DInt 1) (AAdd (AInt 2) (AInt 3)) where AAdd (AInt 2) (AInt 3) : AExp [] AInt
+  -- DAdd (DInt 1) (AApp (ALam (Var hd)) (AInt 5)) where AApp (ALam (Var hd)) (AInt 5) : AExp [] AInt
+  --b. higher-order static value in a dynamic environment
+  -- DApp (ALam (Var hd)) (DInt 5) where ALam (Var hd) : AExp [] (AFun (D Int) (D Int))
+  -- DApp (ALam (ALam (AInt 0))) (DInt 5) where ALam (ALam (AInt 0)) : AExp [] (AFun (AFun (D Int) (D Int)) AInt)
+  -- DApp (ALam (ALam (DInt 0))) (DInt 5) where ALam (ALam (DInt 0)) : AExp [] (AFun (AFun AInt (D Int)) (D Int))
+  
+  --Clearly these terms are not well-typed and we need to modify [AExp] such that they have the right types which are
+  --compatible with the dynamic environment,or we can "lift" their static types to dynamic types so that they can be 
+  --used as dynamic sub-terms to be filled in the right dynamic environment. This,however,brings new difficulty when
+  --we try to partially evaluate term who contains "lifted" subterms. 
+   
+  ----------------
+  --new difficulty
+  ----------------
+  --Consider the evaluation of the following term
+  --DAdd (DInt 1) (Lift (AAdd (AInt 2) (AInt 3))) : AExp [] AInt
+  --the expected type after evaluation is,
+  --EAdd (EInt 1) ? : Exp [] Int where ? : Exp [] Int
+  --and one good candidate for "?" as,
+  --EInt (pe (AAdd (AInt 2) (AInt 3)) []) : Exp [] Int 
+  --where we wrap up the partial evaluation of the static subterm so
+  --that it fits with the rest of evaluation.
+  --However,we can not always "wrap up" a evaluated higher-order static 
+  --value so that it has the required residual type,
+  --ALam (Var hd) : AExp [] (AFun AInt AInt)
+  --the required type of its lifted term as,
+  --? : Exp [] (Fun Int Int)
+  --which can not be constructed from [λ Γ↝Γ' x → x : []↝Γ' → ℕ → ℕ]
+  --for the input of the static function is evaluated to be a natural 
+  --number which can not be matched with the type of the input of the
+  --required residual term. It is then clear that we need to impose 
+  --restriction upon terms to be lifted.
+  -------------------------
+  --restriction for lifting
+  -------------------------
+-------------------------------------------------------------
+-- The interpretation of annotated types.
 Imp : Ctx → AType → Set
 Imp Γ (AInt) = ℕ
 Imp Γ (AFun α₁ α₂) = ∀ {Γ'} → Γ ↝ Γ' → (Imp Γ' α₁ → Imp Γ' α₂)
 Imp Γ (D σ) = Exp Γ σ
 Imp Γ (α₁ • α₂) = (Imp Γ α₁) * (Imp Γ α₂)
 Imp Γ (α₁ ⊎ α₂) = (Imp Γ α₁) ⨄ (Imp Γ α₂)
-
-
 
 elevate-var : ∀ {Γ Γ'} {τ : Type} → Γ ↝ Γ' → τ ∈ Γ → τ ∈ Γ'
 elevate-var ↝-refl x = x
@@ -216,6 +249,230 @@ elevate Γ↝Γ'↝Γ'' (Tr e) = Tr (elevate Γ↝Γ'↝Γ'' e)
 elevate Γ↝Γ'↝Γ'' (EFst e) = EFst (elevate Γ↝Γ'↝Γ'' e)
 elevate Γ↝Γ'↝Γ'' (ESnd e) = ESnd (elevate Γ↝Γ'↝Γ'' e)
 elevate Γ↝Γ'↝Γ'' (ECase c e₁ e₂) = ECase (elevate Γ↝Γ'↝Γ'' c) (elevate (↝↝-extend Γ↝Γ'↝Γ'') e₁) (elevate (↝↝-extend Γ↝Γ'↝Γ'') e₂)
+
+liftE : ∀ {τ Γ Γ'} → Γ ↝ Γ' → Exp Γ τ → Exp Γ' τ
+liftE Γ↝Γ' e = elevate (↝↝-base Γ↝Γ') e
+-------------------------------------------------------------  
+--case 1. a first-order static value in a dynamic environment
+lift1 : AExp [] AInt
+lift1 = (AInt 0)
+
+e1 : Imp [] AInt
+e1 = 0
+
+lifted1 : Exp [] (typeof AInt)
+lifted1 = EInt e1
+--case 2. higher-order static function in a dynamic environment
+--a. a function whose input argument is of static integer
+--lift2 : AExp [] (AFun AInt AInt)
+--lift2 = ALam (Var hd)
+
+--e2 : Imp [] (AFun AInt AInt)
+--e2 = λ Γ↝Γ' x → x
+
+--lifted2 : Exp [] (typeof (AFun AInt AInt))
+--lifted2 = ELam {!!}
+--Note that as explained above it is impossible to construct the right term using [e2]
+--to fill in the above hole!
+
+--b. a function whose input argument is of dynamic integer
+--b.1. when return type is of dynamic integer
+lift3 : AExp [] (AFun (D Int) (D Int))
+lift3 = ALam (Var hd)
+
+e3 : Imp [] (AFun (D Int) (D Int))
+e3 =  λ Γ↝Γ' x → x
+
+liftede3 : Exp [] (typeof (AFun (D Int) (D Int)))
+liftede3 = ELam (e3 (↝-extend ↝-refl) (EVar hd))
+--b.2. when return type is of static integer
+lift4 : AExp [] (AFun (D Int) AInt)
+lift4 = ALam (AInt 0)
+
+e4 : Imp [] (AFun (D Int) AInt)
+e4 = λ Γ↝Γ' x → 0
+
+liftede4 : Exp [] (typeof (AFun (D Int) AInt))
+liftede4 = ELam ( EInt {Int ∷ []} (e4 (↝-extend ↝-refl) (EVar hd)))
+
+--c. a function whose input argument is of static function type
+--c.1. static function type returns a static integer
+--lift5 : AExp []  (AFun (AFun AInt AInt) AInt)
+--lift5 = ALam (AApp (Var hd) (AInt 0))
+
+--e5 : Imp []  (AFun (AFun AInt AInt) AInt)
+--e5 = λ Γ↝Γ' x → x ↝-refl 0
+
+--liftede5 : Exp [] (typeof ( AFun (AFun AInt AInt) AInt))
+--liftede5 =  ELam (EInt (e5 (↝-extend {τ = Fun Int Int} ↝-refl) (λ Γ↝Γ' e' → {!!})))
+--Note that again it is impossible to construct the right residual term
+
+--c.2. static function type returns a dynamic integer
+--c.2.1. the input of the function type is of static integer
+lift6 : AExp []  (AFun (AFun AInt (D Int)) (D Int))
+lift6 = ALam (AApp (Var hd) (AInt 0))
+
+e6 : Imp []  (AFun (AFun AInt (D Int)) (D Int))
+e6 = λ Γ↝Γ' x → x ↝-refl 0
+
+liftede6 : Exp [] (typeof ( AFun (AFun AInt (D Int)) (D Int)))
+liftede6 =  ELam ((e6 (↝-extend {τ = Fun Int Int} ↝-refl) 
+                (λ Γ↝Γ' e' → EApp (liftE Γ↝Γ' (EVar {Fun Int Int ∷ []} hd)) (EInt e'))))
+--c.2.1. the input of the function type is of dynamic integer
+lift7 : AExp []  (AFun (AFun (D Int) (D Int)) (D Int))
+lift7 = ALam (AApp (Var hd) (DInt 0))
+
+e7 : Imp []  (AFun (AFun (D Int) (D Int)) (D Int))
+e7 = λ Γ↝Γ' x → x ↝-refl (EInt 0)
+
+liftede7 : Exp [] (typeof ( AFun (AFun (D Int) (D Int)) (D Int)))
+liftede7 =  ELam ((e7 (↝-extend {τ = Fun Int Int} ↝-refl) 
+                (λ Γ↝Γ' e' → EApp (liftE Γ↝Γ' (EVar {Fun Int Int ∷ []} hd)) e')))
+--c.3. the output of the function type is of higher-order static value
+--c.3.1 the return value has one static integer as input
+-- lift8 : AExp []  (AFun (D Int) (AFun AInt (D Int)))
+-- lift8 = ALam (ALam (Var (tl hd)))
+
+-- e8 : Imp []  (AFun (D Int) (AFun AInt (D Int)))
+-- e8 = λ Γ↝Γ' x Γ'↝Γ'' y → liftE Γ'↝Γ'' x 
+
+-- liftede8 : Exp [] (typeof ( AFun (D Int) (AFun AInt (D Int))))
+-- liftede8 =  ELam (ELam (e8 (↝-extend (↝-extend ↝-refl)) (EVar (tl hd)) ↝-refl {!!}))
+
+--c.3.2 the return value has one dynamic integer as input
+lift9 : AExp []  (AFun (D Int) (AFun (D Int) (D Int)))
+lift9 = ALam (ALam (Var (tl hd)))
+
+e9 : Imp []  (AFun (D Int) (AFun (D Int) (D Int)))
+e9 = λ Γ↝Γ' x Γ'↝Γ'' y → liftE Γ'↝Γ'' x 
+
+liftede9 : Exp [] (typeof ( AFun (D Int) (AFun (D Int) (D Int))))
+liftede9 =  ELam (ELam (e9 (↝-extend (↝-extend ↝-refl)) (EVar (tl hd)) ↝-refl (EVar hd)))
+
+
+---------------------------
+--summary on liftable terms
+---------------------------
+--a. Regarding static first-order static value (static integer) in dynamic environment
+--   All terms of static integer type are liftable
+--b. Regarding static higher-order static value in dynamic environment
+--b.1. given that output value is liftable
+--     • when input is of first-order dynamic type,liftable 
+--     • when input is of higher-order static type and output 
+--       of that input is of dynamic type,liftable
+--b.2. given that input value is liftable
+--     • when output is of first-order type,liftable
+--     • when output is of higher-order type and inputs 
+--       of that type are of dynamic type,liftable
+
+-------------------------------------------
+--specification of the liftable restriction
+-------------------------------------------
+mutual 
+  data Liftable : AType → Set where
+    D : ∀ τ → Liftable (D τ)
+    AInt : Liftable AInt
+    _⊎_ : ∀ {α₁ α₂} → Liftable α₁ → Liftable α₂ → Liftable (α₁ ⊎ α₂)
+    _•_ : ∀ {α₁ α₂} → Liftable α₁ → Liftable α₂ → Liftable (α₁ • α₂)
+    AFun : ∀ {α₁ α₂} → Liftable⁻ α₁ → Liftable α₂ → Liftable (AFun α₁ α₂)
+
+  data Liftable⁻ : AType → Set where
+    D : ∀ τ → Liftable⁻ (D τ)
+    -- _⊎_ : ∀ {α₁ α₂} → Liftable⁻  α₁ → Liftable⁻ α₂ → Liftable⁻ (α₁ ⊎ α₂) 
+    _•_ : ∀ {α₁ α₂} → Liftable⁻ α₁ → Liftable⁻ α₂ → Liftable⁻ (α₁ • α₂)
+    AFun : ∀ {α₁ α₂} → Liftable α₁ → Liftable⁻ α₂ → Liftable⁻ (AFun α₁ α₂)
+----------------------------------------
+--alternative [AExp] with liftable terms
+----------------------------------------    
+data AExp' (Δ : ACtx) : AType → Set where
+  Var : ∀ {α} → α ∈ Δ → AExp' Δ α
+  AInt : ℕ → AExp' Δ AInt
+  AAdd : AExp' Δ AInt → AExp' Δ AInt → AExp' Δ AInt
+  ALam : ∀ {α₁ α₂}   → AExp' (α₁ ∷ Δ) α₂ → AExp' Δ (AFun α₁ α₂)
+  AApp : ∀ {α₁ α₂}   → AExp' Δ (AFun α₂ α₁) → AExp' Δ α₂ → AExp' Δ α₁
+  DInt : ℕ → AExp' Δ (D Int)
+  DAdd : AExp' Δ (D Int) → AExp' Δ (D Int) → AExp' Δ (D Int)
+  DLam : ∀ {σ₁ σ₂}   → AExp' ((D σ₁) ∷ Δ) (D σ₂) → AExp' Δ (D (Fun σ₁ σ₂))
+  DApp : ∀ {α₁ α₂}   → AExp' Δ (D (Fun α₂ α₁)) → AExp' Δ (D α₂) → AExp' Δ (D α₁)
+  -- Static pairs and sums
+  _,_  : ∀ {α₁ α₂} → AExp' Δ α₁ → AExp' Δ α₂ → AExp' Δ (α₁ • α₂)
+  Tl   : ∀ {α₁ α₂} → AExp' Δ α₁ → AExp' Δ (α₁ ⊎ α₂)
+  Tr   : ∀ {α₁ α₂} → AExp' Δ α₂ → AExp' Δ (α₁ ⊎ α₂)
+  Fst  : ∀ {α₁ α₂} → AExp' Δ (α₁ • α₂) → AExp' Δ α₁
+  Snd  : ∀ {α₁ α₂} → AExp' Δ (α₁ • α₂) → AExp' Δ α₂
+  Case : ∀ {α₁ α₂ α₃} → AExp' Δ (α₁ ⊎ α₂) → AExp' (α₁ ∷ Δ) α₃ → AExp' (α₂ ∷ Δ) α₃ → AExp' Δ α₃
+  -- Dynamic pairs and sums
+  _ḋ_  : ∀ {σ₁ σ₂} → AExp' Δ (D σ₁) → AExp' Δ (D σ₂) → AExp' Δ (D (σ₁ • σ₂))
+  DTl   : ∀ {σ₁ σ₂} → AExp' Δ (D σ₁) → AExp' Δ (D (σ₁ ⊎ σ₂))
+  DTr   : ∀ {σ₁ σ₂} → AExp' Δ (D σ₂) → AExp' Δ (D (σ₁ ⊎ σ₂))
+  DFst  : ∀ {σ₁ σ₂} → AExp' Δ (D (σ₁ • σ₂)) → AExp' Δ (D σ₁)
+  DSnd  : ∀ {σ₁ σ₂} → AExp' Δ (D (σ₁ • σ₂)) → AExp' Δ (D σ₂)
+  DCase : ∀ {σ₁ σ₂ σ₃} → AExp' Δ (D (σ₁ ⊎ σ₂)) → AExp' ((D σ₁) ∷ Δ) (D σ₃) → AExp' ((D σ₂) ∷ Δ) (D σ₃) → AExp' Δ (D σ₃) 
+  -- Liftable static terms
+  ↑     : ∀ {α} → Liftable α → AExp' Δ α  → AExp' Δ (D (typeof α))
+
+
+  
+
+
+
+-- The terms of AExp assign a binding time to each subterm. For
+-- program specialization, we interpret terms with dynamic binding
+-- time as the programs subject to specialization, and their subterms
+-- with static binding time as statically known inputs. A partial
+-- evaluation function (or specializer) then compiles the program into
+-- a residual term for that is specialized for the static inputs. The
+-- main complication when defining partial evaluation as a total,
+-- primitively recursive function will be the treatment of the De
+-- Bruijn variables of non-closed residual expressions.
+
+------------------------------------------------------------------------------
+-- the following expressions are not well-typed but nonetheless very important
+------------------------------------------------------------------------------
+-----------
+-- addition
+-----------
+-- 1D +D (2S +S 3S) or,
+-- DAdd (DInt 1) (AAdd (AInt 2) (AInt 3)) 
+
+
+
+
+-- The interpretation of annotated types. 
+--Imp : Ctx → AType → Set
+--Imp Γ (AInt) = ℕ
+--Imp Γ (AFun α₁ α₂) = ∀ {Γ'} → Γ ↝ Γ' → (Imp Γ' α₁ → Imp Γ' α₂)
+--Imp Γ (D σ) = Exp Γ σ
+--Imp Γ (α₁ • α₂) = (Imp Γ α₁) * (Imp Γ α₂)
+--Imp Γ (α₁ ⊎ α₂) = (Imp Γ α₁) ⨄ (Imp Γ α₂)
+
+
+
+-- elevate-var : ∀ {Γ Γ'} {τ : Type} → Γ ↝ Γ' → τ ∈ Γ → τ ∈ Γ'
+-- elevate-var ↝-refl x = x
+-- elevate-var (↝-extend Γ↝Γ') x = tl (elevate-var Γ↝Γ' x)
+
+
+-- elevate-var2 : ∀ {Γ Γ' Γ'' τ} → Γ ↝ Γ' ↝ Γ'' → τ ∈ Γ → τ ∈ Γ''
+-- elevate-var2 (↝↝-base x) x₁ = elevate-var x x₁
+-- elevate-var2 (↝↝-extend Γ↝Γ'↝Γ'') hd = hd
+-- elevate-var2 (↝↝-extend Γ↝Γ'↝Γ'') (tl x) = tl (elevate-var2 Γ↝Γ'↝Γ'' x)
+
+
+
+
+-- elevate : ∀ {Γ Γ' Γ'' τ} → Γ ↝ Γ' ↝ Γ'' → Exp Γ τ → Exp Γ'' τ
+-- elevate Γ↝Γ'↝Γ'' (EVar x) = EVar (elevate-var2 Γ↝Γ'↝Γ'' x)
+-- elevate Γ↝Γ'↝Γ'' (EInt x) = EInt x
+-- elevate Γ↝Γ'↝Γ'' (EAdd e e₁) = EAdd (elevate Γ↝Γ'↝Γ'' e) (elevate Γ↝Γ'↝Γ'' e₁)
+-- elevate Γ↝Γ'↝Γ'' (ELam e) = ELam (elevate (↝↝-extend Γ↝Γ'↝Γ'') e)
+-- elevate Γ↝Γ'↝Γ'' (EApp e e₁) = EApp (elevate Γ↝Γ'↝Γ'' e) (elevate Γ↝Γ'↝Γ'' e₁)
+-- elevate Γ↝Γ'↝Γ'' (e ,  e₁) =  ((elevate Γ↝Γ'↝Γ'' e) , (elevate Γ↝Γ'↝Γ'' e₁))
+-- elevate Γ↝Γ'↝Γ'' (Tl e) = Tl (elevate Γ↝Γ'↝Γ'' e)
+-- elevate Γ↝Γ'↝Γ'' (Tr e) = Tr (elevate Γ↝Γ'↝Γ'' e)
+-- elevate Γ↝Γ'↝Γ'' (EFst e) = EFst (elevate Γ↝Γ'↝Γ'' e)
+-- elevate Γ↝Γ'↝Γ'' (ESnd e) = ESnd (elevate Γ↝Γ'↝Γ'' e)
+-- elevate Γ↝Γ'↝Γ'' (ECase c e₁ e₂) = ECase (elevate Γ↝Γ'↝Γ'' c) (elevate (↝↝-extend Γ↝Γ'↝Γ'') e₁) (elevate (↝↝-extend Γ↝Γ'↝Γ'') e₂)
 
 
 
@@ -255,6 +512,7 @@ module SimpleAEnv where
   consD σ env = (cons {α = D σ} (EVar hd) (liftEnv (↝-extend {τ = σ} ↝-refl) env))
 
 
+
   
   pe : ∀ {α Δ Γ} → AExp Δ α → AEnv Γ Δ → Imp Γ α
   pe (Var x) env = lookup env x
@@ -280,6 +538,66 @@ module SimpleAEnv where
   pe (DFst e) env = EFst (pe e env)
   pe (DSnd e) env = ESnd (pe e env)
   pe (DCase {σ₁} {σ₂} e e₁ e₂) env = ECase (pe e env) (pe e₁ (consD σ₁ env)) (pe e₂ (consD σ₂ env))
+
+------------------------------------------------
+-- Now the partial evaluator with liftable terms
+------------------------------------------------
+----------------------------------------------
+-- Helper for the evaluation of liftable terms
+----------------------------------------------
+  mutual 
+    lift' : ∀ {Γ α} → Liftable α → Imp Γ α → (Exp Γ (typeof α))
+    lift' (D τ) v = v
+    lift' AInt v = EInt v
+    lift' (ty ⊎ ty₁) (tl a) = Tl (lift' ty a)
+    lift' (ty ⊎ ty₁) (tr b) = Tr (lift' ty₁ b)
+    lift' (ty • ty₁) (ffst , ssnd) = lift' ty ffst , lift' ty₁ ssnd
+    lift' {Γ} (AFun {α₁} ty₁ ty₂) v = ELam
+                                        ((λ x → lift' ty₂ (v (↝-extend {τ = typeof α₁} ↝-refl) x))
+                                         (embed ty₁ (EVar {Γ = typeof α₁ ∷ Γ} hd)))
+
+    embed : ∀ {Γ α} → Liftable⁻ α → Exp Γ (typeof α) → (Imp Γ α)
+    embed (D τ) e = e
+    -- embed (ty ⊎ ty₁) e = {!  (ECase e (EVar hd) ?)!}
+    -- embed (ty ⊎ ty₁) (EVar x) = {!!}
+    -- embed (ty ⊎ ty₁) (EApp e e₁) = {!!}
+    -- embed (ty ⊎ ty₁) (Tl e) = tl (embed ty e)
+    -- embed (ty ⊎ ty₁) (Tr e) = tr (embed ty₁ e)
+    -- embed (ty ⊎ ty₁) (EFst e) = {!!}
+    -- embed (ty ⊎ ty₁) (ESnd e) = {!!}
+    -- embed (ty ⊎ ty₁) (ECase e e₁ e₂) = {!!}
+    embed (ty • ty₁) e = embed ty (EFst e) , embed ty₁ (ESnd e)
+    embed {Γ} (AFun {α} ty₁ ty₂) e = 
+      λ Γ↝Γ' v₁ → embed ty₂ (EApp (liftE Γ↝Γ' e) (lift' ty₁ v₁))
+--------------------
+-- Partial Evaluator
+--------------------
+  pe' : ∀ {α Δ Γ} → AExp' Δ α → AEnv Γ Δ → Imp Γ α
+  pe' (Var x) env = lookup env x
+  pe' (AInt x) env = x
+  pe' (AAdd e e₁) env = pe' e env + pe' e₁ env
+  pe' (ALam {α} e) env = λ Γ↝Γ' → λ y → pe' e (cons {α = α} y (liftEnv Γ↝Γ' env))
+  pe' (AApp e e₁) env = pe' e env ↝-refl (pe' e₁ env)
+  pe' (DInt x) env = EInt x
+  pe' (DAdd e e₁) env = EAdd (pe' e env) (pe' e₁ env)
+  pe' (DLam {σ} e) env = ELam (pe' e (consD σ env))
+  pe' (DApp e e₁) env = EApp (pe' e env) (pe' e₁ env)
+  pe' {Γ = Γ} (e , e₁) env = pe' {Γ = Γ} e env , pe' {Γ = Γ} e₁ env
+  pe' {α = α₁ ⊎ α₂} {Γ = Γ} (Tl e) env = tl (pe' {α = α₁} {Γ = Γ} e env)
+  pe' {α = α₁ ⊎ α₂} {Γ = Γ} (Tr e) env = tr (pe' {α = α₂} {Γ = Γ} e env)
+  pe' {Γ = Γ} (Fst e) env = fst (pe' {Γ = Γ} e env)
+  pe' {Γ = Γ} (Snd e) env = snd (pe' {Γ = Γ} e env)
+  pe' {Γ = Γ} (Case e e₁ e₂) env with pe' {Γ = Γ} e env
+  pe' {Γ = Γ} (Case {α₁ = α} e e₁ e₂) env | tl y = (λ Γ↝Γ' → λ y → pe' e₁ (cons {α = α} y (liftEnv Γ↝Γ' env))) ↝-refl y
+  pe' {Γ = Γ} (Case {α₂ = α} e e₁ e₂) env | tr y = (λ Γ↝Γ' → λ y → pe' e₂ (cons {α = α} y (liftEnv Γ↝Γ' env))) ↝-refl y
+  pe' (e ḋ e₁) env = pe' e env , pe' e₁ env
+  pe' (DTl e) env = Tl (pe' e env)
+  pe' (DTr e) env = Tr (pe' e env)
+  pe' (DFst e) env = EFst (pe' e env)
+  pe' (DSnd e) env = ESnd (pe' e env)
+  pe' (DCase {σ₁} {σ₂} e e₁ e₂) env = ECase (pe' e env) (pe' e₁ (consD σ₁ env)) (pe' e₂ (consD σ₂ env))
+  pe' (↑ x e) env = lift' x (pe' e env) 
+
 
 
 
@@ -326,13 +644,44 @@ module Correctness where
   strip (DCase e e₁ e₂) = ECase (strip e) (strip e₁) (strip e₂)
 
 
+  
 
-
-  liftE : ∀ {τ Γ Γ'} → Γ ↝ Γ' → Exp Γ τ → Exp Γ' τ
-  liftE Γ↝Γ' e = elevate (↝↝-base Γ↝Γ') e
+  --liftE : ∀ {τ Γ Γ'} → Γ ↝ Γ' → Exp Γ τ → Exp Γ' τ
+  --liftE Γ↝Γ' e = elevate (↝↝-base Γ↝Γ') e
 
   stripLift : ∀ {α Δ Γ} → stripΔ Δ ↝ Γ → AExp Δ α  → Exp Γ (stripα α)
   stripLift Δ↝Γ = liftE Δ↝Γ ∘ strip
+  
+  --------------------------------------------
+  --[strip] and [stripLift] for liftable terms
+  --------------------------------------------
+  strip' : ∀ {α Δ} → AExp' Δ α → Exp (stripΔ Δ) (stripα α)
+  strip' e = {!!}
+  -- strip (AInt x) = EInt x
+  -- strip (AAdd e e₁) = EAdd (strip e) (strip e₁)
+  -- strip (ALam e) = ELam (strip e)
+  -- strip (AApp e e₁) = EApp (strip e) (strip e₁)
+  -- strip (DInt x) = EInt x
+  -- strip (DAdd e e₁) = EAdd (strip e) (strip e₁)
+  -- strip (DLam e) = ELam (strip e)
+  -- strip (DApp e e₁) = EApp (strip e) (strip e₁)
+  -- strip (e , e₁) = strip e , strip e₁
+  -- strip (Tl e) = Tl (strip e)
+  -- strip (Tr e) = Tr (strip e)
+  -- strip (Fst e) = EFst (strip e)
+  -- strip (Snd e) = ESnd (strip e)
+  -- strip (Case e e₁ e₂) = ECase (strip e) (strip e₁) (strip e₂)
+  -- strip (e ḋ e₁) = strip e , strip e₁
+  -- strip (DTl e) = Tl (strip e)
+  -- strip (DTr e) = Tr (strip e)
+  -- strip (DFst e) = EFst (strip e)
+  -- strip (DSnd e) = ESnd (strip e)
+  -- strip (DCase e e₁ e₂) = ECase (strip e) (strip e₁) (strip e₂)
+
+
+  stripLift' : ∀ {α Δ Γ} → stripΔ Δ ↝ Γ → AExp' Δ α  → Exp Γ (stripα α)
+  stripLift' Δ↝Γ = liftE Δ↝Γ ∘ strip'
+  
 
   -- We want to show that pe preserves the semantics of the
   -- program. Roughly, Exp-Eval.ev-ing a stripped program is
@@ -653,6 +1002,82 @@ module Correctness where
     ... | tr c | tl c' | ()
 
 
+    ---------------------------------------
+    --Correctness proof with liftable terms
+    ---------------------------------------
+    pe-correct' : ∀ { α Δ Γ' } → (e : AExp' Δ α) →
+                 let Γ = stripΔ Δ in 
+                 {aenv : AEnv Γ' Δ} → {env : Env Γ} → 
+                 (env' : Env Γ') →
+                 Equiv-Env env' aenv env → 
+                 Equiv env' (pe' e aenv) (ev (strip' e) env)
+    pe-correct' e env' eqenv = {!!}
+    -- pe-correct' (AInt x) env' eqenv = refl
+    -- pe-correct' (AAdd e e₁) env' eqenv 
+    --   rewrite pe-correct e env' eqenv | pe-correct e₁ env' eqenv = refl
+    -- pe-correct (ALam e) env' eqenv = 
+    --  λ {_} {env''} env'↝env'' {av'} {v'} eq →
+    --      let eqenv' : _
+    --          eqenv' = lem-equiv-env-lift-lift env'↝env'' eqenv
+    --          eqenv'' : _
+    --          eqenv'' = cons eqenv' av' v' eq
+    --      in pe-correct e env'' eqenv''
+    -- pe-correct (AApp e e₁) env' eqenv 
+    --   with pe-correct e env' eqenv | pe-correct e₁ env' eqenv
+    -- ... | IAe | IAf = IAe (refl env') IAf
+    -- pe-correct (DInt x) env' eqenv = refl
+    -- pe-correct (DAdd e e₁) env' eqenv
+    --   rewrite pe-correct e env' eqenv | pe-correct e₁ env' eqenv = refl
+    -- pe-correct (DLam e) env' eqenv = 
+    --  ext
+    --   (λ x →
+    --      let eqenv₁ : _
+    --          eqenv₁ = lem-equiv-env-lift-extend env' eqenv x
+    --          eqenv₂ : _
+    --          eqenv₂ = cons eqenv₁ (EVar hd) x refl
+    --      in pe-correct e (x ∷ env') eqenv₂)
+    -- pe-correct (DApp e e₁) env' eqenv 
+    --   with pe-correct e₁ env' eqenv | pe-correct e env' eqenv
+    -- ... | IA' | IA = cong₂ (λ f x → f x) IA IA'
+    -- pe-correct (e , e₁) env' eqenv = ∧-intro (pe-correct e env' eqenv) (pe-correct e₁ env' eqenv)
+    -- pe-correct (Tl e) env' eqenv = pe-correct e env' eqenv
+    -- pe-correct (Tr e) env' eqenv = pe-correct e env' eqenv
+    -- pe-correct (Fst (e , e₁)) env' eqenv = pe-correct e env' eqenv
+    -- pe-correct (Fst e) {aenv = aenv} {env = env} env' eqenv with pe e aenv | ev (strip e) env | pe-correct e env' eqenv
+    -- ... | e₁ , e₂ | e₁' , e₂' | ∧-intro A B = A
+    -- pe-correct (Snd (e , e₁)) env' eqenv = pe-correct e₁ env' eqenv
+    -- pe-correct (Snd e) {aenv = aenv} {env = env} env' eqenv with pe e aenv | ev (strip e) env | pe-correct e env' eqenv
+    -- ... | e₁ , e₂ | e₁' , e₂' | ∧-intro A B = B
+    -- pe-correct {α} (Case e e₁ e₂) {aenv = aenv} {env = env} env' eqenv with pe e aenv | ev (strip e) env | pe-correct e env' eqenv
+    -- ... | tl c | tl c' | L = pe-correct e₁ {aenv = cons c (liftEnv ↝-refl aenv)}
+    --                            {env = c' ∷ env} env'
+    --                            (cons (lem-equiv-env-lift-lift (refl env') eqenv) c c' L)
+    -- ... | tr c | tr c' | R = pe-correct e₂ {aenv = cons c (liftEnv ↝-refl aenv)}
+    --                            {env = c' ∷ env} env'
+    --                            (cons (lem-equiv-env-lift-lift (refl env') eqenv) c c' R)
+    -- ... | tr c | tl c' | ()
+    -- ... | tl c | tr c' | ()
+    -- pe-correct (e ḋ e₁) env' eqenv with pe-correct e env' eqenv | pe-correct e₁ env' eqenv 
+    -- ... | IA | IA' rewrite IA | IA' = refl
+    -- pe-correct (DTl e) env' eqenv with pe-correct e env' eqenv
+    -- ... | IA rewrite IA = refl
+    -- pe-correct (DTr e) env' eqenv with pe-correct e env' eqenv 
+    -- ... | IA rewrite IA = refl
+    -- pe-correct (DFst e) env' eqenv with pe-correct e env' eqenv 
+    -- ... | IA rewrite IA = refl
+    -- pe-correct (DSnd e) env' eqenv with pe-correct e env' eqenv
+    -- ... | IA rewrite IA = refl
+    -- pe-correct (DCase e e₁ e₂) {aenv = aenv} {env = env} env' eqenv with ev (pe e aenv) env' | ev (strip e) env | pe-correct e env' eqenv
+    -- ... | tl c | tl c' | IA rewrite (→tl {x' = c} {y' = c'} (tl c) (tl c') IA refl refl) = 
+    --   pe-correct e₁
+    --     {aenv = cons (EVar hd) (liftEnv (↝-extend ↝-refl) aenv)}
+    --     {env = c' ∷ env} (c' ∷ env') (cons (lem-equiv-env-lift-lift (extend c' (refl env')) eqenv) (EVar hd) c' refl)
+    -- ... | tr c | tr c' | IA rewrite (→tr {x' = c} {y' = c'} (tr c) (tr c') IA refl refl) = 
+    --   pe-correct e₂
+    --     {aenv = cons (EVar hd) (liftEnv (↝-extend ↝-refl) aenv)}
+    --     {env = c' ∷ env} (c' ∷ env')
+    --     (cons (lem-equiv-env-lift-lift (extend c' (refl env')) eqenv)
+    --      (EVar hd) c' refl)
+    -- ... | tl c | tr c' | ()  
+    -- ... | tr c | tl c' | ()
 
-    
-   
