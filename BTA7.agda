@@ -1003,7 +1003,7 @@ module Correctness where
 
 
     ---------------------------------------
-    --correctness proof with liftable terms
+    --Correctness proof with liftable terms
     ---------------------------------------
     pe-correct' : ∀ { α Δ Γ' } → (e : AExp' Δ α) →
                  let Γ = stripΔ Δ in 
