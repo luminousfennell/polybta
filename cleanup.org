@@ -1,0 +1,13 @@
+* Cleanup TODOS
+- [ ] BTA7: try to remove Data.Bool import
+- [ ] Lib: Comments 
+- [ ] Lib: Use Product and Sum from the standard library
+- [ ] Lib: Try to find the injection lemmas in the standard lib (e.g. ->tl)
+- [ ] Lib: Clean up unecessary submodules (like ListExtension)
+- [ ] BTA7: rename typeof to erase
+- [ ] AnnotatedTypes: make it compile
+- [ ] BTA7: Rename AExp static constructors : AInt --> SInt, etc
+- [ ] Examples: make it compile
+- [ ] Examples: add examples from BTA6
+- [ ] BTA7: Remove SimpleAEnv module
+- [ ] BTA7: change AEnv.cons to _::_
