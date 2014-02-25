@@ -548,24 +548,24 @@ module Correctness where
   strip (AInt x) = EInt x
   strip (AAdd e e₁) = EAdd (strip e) (strip e₁)
   strip (ALam e) = ELam (strip e)
-  strip (AApp e e₁) = EApp (strip e) (strip e₁)
-  strip (DInt x) = EInt x
+  strip (AApp e e₁)  = EApp (strip e) (strip e₁)
+  strip (DInt x)  = EInt x
   strip (DAdd e e₁) = EAdd (strip e) (strip e₁)
-  strip (DLam e) = ELam (strip e)
-  strip (DApp e e₁) = EApp (strip e) (strip e₁)
-  strip (e , e₁) = strip e , strip e₁
-  strip (Tl e) = Tl (strip e)
-  strip (Tr e) = Tr (strip e)
-  strip (Fst e) = EFst (strip e)
-  strip (Snd e) = ESnd (strip e)
-  strip (Case e e₁ e₂) = ECase (strip e) (strip e₁) (strip e₂)
-  strip (e ḋ e₁) = strip e , strip e₁
-  strip (DTl e) = Tl (strip e)
-  strip (DTr e) = Tr (strip e)
-  strip (DFst e) = EFst (strip e)
-  strip (DSnd e) = ESnd (strip e)
-  strip (DCase e e₁ e₂) = ECase (strip e) (strip e₁) (strip e₂)
-  strip (↑ x e) = {!!}
+  strip (DLam e)  = ELam (strip e)
+  strip (DApp e e₁)  = EApp (strip e) (strip e₁)
+  strip (e , e₁)  = strip e  , strip e₁ 
+  strip (Tl e)  = Tl (strip e)
+  strip (Tr e)  = Tr (strip e)
+  strip (Fst e)  = EFst (strip e)
+  strip (Snd e)  = ESnd (strip e)
+  strip (Case e e₁ e₂)  = ECase (strip e) (strip e₁) (strip e₂)
+  strip (e ḋ e₁)  = strip e  , strip e₁ 
+  strip (DTl e)  = Tl (strip e)
+  strip (DTr e)  = Tr (strip e)
+  strip (DFst e)  = EFst (strip e)
+  strip (DSnd e)  = ESnd (strip e)
+  strip (DCase e e₁ e₂)  = ECase (strip e) (strip e₁) (strip e₂)
+  strip (↑ x e) = strip e
 
 
   
@@ -576,6 +576,11 @@ module Correctness where
   stripLift : ∀ {α Δ Γ} → stripΔ Δ ↝ Γ → AExp Δ α  → Exp Γ (stripα α)
   stripLift Δ↝Γ = liftE Δ↝Γ ∘ strip
   
+  -- --------------------------------
+  -- --"lift-strip" equivalence lemma
+  -- --------------------------------
+  -- ↑≡↓ : ∀ x e env env' aenv → Equiv-Env env' aenv env  → ev (lift' x (pe e aenv)) env'  ≡ ev (strip e) env
+  -- ↑≡↓ x e env env' aenv eqenv = {!!} 
  
 
   -- We want to show that pe preserves the semantics of the
@@ -647,6 +652,13 @@ module Correctness where
               Equiv env' va v → 
               --Equiv-Env env' (cons α va (aenv)) (v ∷ env)
               Equiv-Env env' (cons {α = α} va (aenv)) (v ∷ env)
+
+  --------------------------------
+  --"lift-strip" equivalence lemma
+  --------------------------------
+    -- ↑≡↓ : ∀ {Γ' Δ α} x e env env' aenv → Equiv-Env {Γ'} env' {Δ} aenv env  → ev (lift' {Γ = Γ'} {α = α} x (pe e aenv)) env'  ≡ ev (strip e) env
+    -- ↑≡↓ x e env env' aenv eqenv = {!!} 
+
 
 
   -- Now for the proof...
@@ -815,6 +827,51 @@ module Correctness where
       with lem-equiv-env-lift-lift env'↝env'' eqenv
     ... | IA = cons IA (lift α Γ↝Γ' va) v (lem-lift-equiv va v env'↝env'' x)
 
+   
+  --------------------------------
+  --"lift-correct" equivalence lemma
+  --------------------------------
+    open import Data.Product
+    mutual 
+      lift-correct : ∀ {Γ α} (lft : Liftable α) (env : Env Γ) (av : Imp Γ α) (v : EImp (typeof α)) →  
+                     Equiv env av v → (Equiv env (lift' lft av) v)
+      lift-correct (D τ) env av v eq = eq
+      lift-correct AInt env av v eq = eq
+      lift-correct (lft ⊎ lft₁) env (tl a) (tl a₁) eq with lift-correct lft env a a₁ 
+      ... | IA rewrite IA eq = refl
+      lift-correct (lft ⊎ lft₁) env (tr b) (tl a) ()
+      lift-correct (lft ⊎ lft₁) env (tl a) (tr b) ()
+      lift-correct (lft ⊎ lft₁) env (tr b) (tr b₁) eq with lift-correct lft₁ env b b₁ 
+      ... | IA rewrite IA eq = refl
+      lift-correct (lft • lft₁) env (ffst , ssnd) (ffst₁ , ssnd₁) (∧-intro x x₁) 
+        rewrite lift-correct lft env ffst ffst₁ x | lift-correct lft₁ env ssnd ssnd₁ x₁ = refl
+      lift-correct (AFun x lft) env av v eq =  
+        ext (λ x₁ →
+               lift-correct lft (x₁ ∷ env)
+               (av (↝-extend ↝-refl) (embed x (EVar hd))) (v x₁) (eq (extend x₁ (refl env)) (embed-correct x (x₁ ∷ env) (EVar hd) x₁ refl)))
+ 
+      embed-correct : ∀ {Γ α} (lft : Liftable⁻ α) (env : Env Γ) →  (e : Exp Γ (typeof α)) → (v : EImp (typeof α)) → 
+                      ev e env  ≡ v → Equiv env (embed lft e) v
+      embed-correct (D τ) env e v eq rewrite eq = refl
+      embed-correct (lft • lft₁) env e (fstv , sndv) eq  = ∧-intro (embed-correct lft env (EFst e) fstv (subst (λ x → ffst x ≡ fstv) (sym eq) refl)) 
+                                                                   (embed-correct lft₁ env (ESnd e) sndv
+                                                                      (subst (λ x → ssnd x ≡ sndv) (sym eq) refl))
+      embed-correct {α = AFun α₁ α₂} (AFun x lft) env e v eq = f
+        where 
+
+              f : ∀ {Γ' env' Γ↝Γ'} (x₁ : Γ↝Γ' ⊢ env ↝ env') {x₂ : Imp Γ' α₁} {x₃ : EImp (typeof α₁)}
+                    (x₄ : Equiv env' x₂ x₃) →
+                    Equiv env'
+                    (embed lft (EApp (elevate (↝↝-base Γ↝Γ') e) (lift' x x₂))) (v x₃)
+              f {Γ'} {env'} {Γext} envext {av'} {v'} eq' = 
+                                                            embed-correct lft env' (EApp (elevate (↝↝-base Γext) e) (lift' x av')) (v v') 
+                                                               g
+                where g : ev (elevate (↝↝-base Γext) e) env' (ev (lift' x av') env') ≡ v v'
+                      g rewrite lift-correct x env' av' v' eq'  
+                              | sym (cong (λ f → f v') (lem-elevate-≡ (refl envext) e)) 
+                              |  (cong (λ f → f v') eq) = refl
+  
+ 
 
     ---------------------------------------
     --Correctness proof with liftable terms
@@ -898,7 +955,10 @@ module Correctness where
          (EVar hd) c' refl)
     ... | tl c | tr c' | ()  
     ... | tr c | tl c' | ()
-    pe-correct (↑ x e) env' eqenv = ?
+    pe-correct (↑ x e) {aenv = aenv} {env = env} env' eqenv  
+      with pe-correct e env' eqenv 
+    ... | IA = lift-correct x env' (pe e aenv) (ev (strip e) env) IA
+
 
 
     
