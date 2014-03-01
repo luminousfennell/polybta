@@ -111,21 +111,21 @@ Equiv {SSum α α₁} ρ (inj₂ b) (inj₁ a) = ⊥
 \end{code}}
 \agdaSnippet\btaEquivEnvSig{
 \begin{code}
-data Equiv-Env {Γ' : _} (ρ : Env Γ') :
+data Env-Equiv {Γ' : _} (ρ : Env Γ') :
   ∀ {Δ} → (ρ' : AEnv Γ' Δ) → (ρ'' : Env (map erase Δ))
   → Set where
 -- ...
 \end{code}}
 \agdaSnippet\btaEquivEnv{
 \begin{code}
-  [] : Equiv-Env ρ [] []
+  [] : Env-Equiv ρ [] []
   cons : ∀ {α Δ} → let τ = erase α
                        Γ = map erase Δ in
           {ρ'' : Env Γ} → {ρ' : AEnv Γ' Δ} → 
-          Equiv-Env ρ ρ' ρ'' →
+          Env-Equiv ρ ρ' ρ'' →
           (va : ATInt Γ' α) → (v : TInt τ) → 
           Equiv ρ va v → 
-              Equiv-Env ρ (va ∷ ρ') (v ∷ ρ'')
+              Env-Equiv ρ (va ∷ ρ') (v ∷ ρ'')
 \end{code}}
 
 \agdaIgnore{
@@ -225,7 +225,7 @@ int↑-equiv {SSum α α₁} (inj₂ b) (inj₁ a) (extend v₁ ρ↝ρ') ()
 lookup-equiv : ∀ {α Δ Γ'} → let Γ = map erase Δ in
                    { aρ : AEnv Γ' Δ } {ρ : Env Γ} →
                    (ρ' : Env Γ') →
-                   Equiv-Env ρ' aρ ρ →
+                   Env-Equiv ρ' aρ ρ →
                    ∀ x → Equiv {α} ρ' (lookup x aρ ) (lookupE (mapIdx erase x) ρ)
 lookup-equiv ρ' [] ()
 lookup-equiv ρ' (cons  ρeq va v eq) hd = eq
@@ -234,8 +234,8 @@ lookup-equiv ρ' (cons  ρeq va v eq) (tl x) = lookup-equiv ρ' ρeq x
 env↑-equiv-extend :
   ∀ {σ Γ' Δ} (ρ' : Env Γ') → let Γ = map erase Δ in
     {ρ : Env Γ} {aρ : AEnv Γ' Δ} →
-    Equiv-Env ρ' aρ ρ → (x : TInt σ) →
-    Equiv-Env (x ∷ ρ') (env↑ (extend refl) aρ) ρ
+    Env-Equiv ρ' aρ ρ → (x : TInt σ) →
+    Env-Equiv (x ∷ ρ') (env↑ (extend refl) aρ) ρ
 env↑-equiv-extend _ [] x = []
 env↑-equiv-extend ρ' (cons {α} eqρ va v x) x₁ =
   cons (env↑-equiv-extend ρ' eqρ x₁)
@@ -247,8 +247,8 @@ env↑-equiv :
     {ρ' : Env Γ'} {ρ'' : Env Γ''}
     (ρ'↝ρ'' : Γ↝Γ' ⊢ ρ' ↝ ρ'') →
     {ρ : Env Γ} {aρ : AEnv Γ' Δ} →
-    Equiv-Env ρ' aρ ρ → 
-    Equiv-Env ρ'' (env↑ Γ↝Γ' aρ) ρ
+    Env-Equiv ρ' aρ ρ → 
+    Env-Equiv ρ'' (env↑ Γ↝Γ' aρ) ρ
 env↑-equiv ρ'↝ρ'' [] = []
 env↑-equiv {Γ↝Γ' = Γ↝Γ'} ρ'↝ρ'' (cons eqρ va v x)
   with env↑-equiv ρ'↝ρ'' eqρ
@@ -297,7 +297,7 @@ pe-correct : ∀ { α Δ Γ' } →
   (e : AExp Δ α) →
   (ρ : Env Γ') →
   {ρ' : AEnv Γ' Δ} → {ρ'' : Env (map erase Δ)} → 
-  Equiv-Env ρ ρ' ρ'' → 
+  Env-Equiv ρ ρ' ρ'' → 
   Equiv ρ (pe e ρ') (ev (residualize e) ρ'')
 \end{code}} 
 \agdaIgnore{
@@ -362,3 +362,11 @@ pe-correct (Lift x e) env' {aenv} {env} eqenv
   with pe-correct e env' eqenv 
 ... | IA = lift-correct x env' (pe e aenv) (ev (residualize e) env) IA 
 \end{code}}
+\agdaSnippet\btaPeCorrectDyn{
+\begin{code}
+pe-correct-dyn :
+  ∀ { τ } → (e : AExp [] (D τ)) →
+  ev (pe e []) [] ≡ (ev (residualize e) [])
+pe-correct-dyn e = pe-correct e [] []
+\end{code}}
+
